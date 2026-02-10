@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Box,
   Typography,
@@ -23,6 +23,8 @@ import {
   InputLabel,
   Select,
   MenuItem,
+  Tooltip,
+  Dialog,
 } from '@mui/material';
 import {
   RotateCw,
@@ -381,6 +383,36 @@ export default function LiveTab({
   const [plantFilter, setPlantFilter] = useState('');
   const [shiftFilter, setShiftFilter] = useState('');
 
+  // Photo management
+  const [photosAvailable, setPhotosAvailable] = useState<Set<string>>(
+    new Set(),
+  );
+  const [previewPhoto, setPreviewPhoto] = useState<string | null>(null);
+
+  const loadPhotoIndex = useCallback(async () => {
+    try {
+      const res = await fetch('/api/employee-photos');
+      const data = await res.json();
+      if (data.success && data.employees) {
+        setPhotosAvailable(new Set(data.employees));
+      }
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  useEffect(() => {
+    loadPhotoIndex();
+  }, [loadPhotoIndex]);
+
+  const todayStr = useMemo(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }, []);
+
+  const getPhotoUrl = (empNum: string, type: 'entry' | 'exit') =>
+    `/api/employee-photos/${empNum}?date=${todayStr}&type=${type}`;
+
   useEffect(() => {
     onRefresh();
   }, [onRefresh]);
@@ -692,6 +724,8 @@ export default function LiveTab({
                   <TableHead>
                     <TableRow>
                       {[
+                        'Entrada',
+                        'Salida',
                         'Empleado',
                         'Nombre',
                         'Turno',
@@ -706,6 +740,9 @@ export default function LiveTab({
                             fontWeight: 600,
                             bgcolor: '#fafafa',
                             borderBottom: '2px solid #e5e7eb',
+                            ...(h === 'Entrada' || h === 'Salida'
+                              ? { textAlign: 'center', width: 52, p: 0.5 }
+                              : {}),
                           }}
                         >
                           {h}
@@ -722,6 +759,83 @@ export default function LiveTab({
                           transition: 'background 0.15s',
                         }}
                       >
+                        {/* Entry photo */}
+                        <TableCell
+                          sx={{ textAlign: 'center', p: 0.5, width: 52 }}
+                        >
+                          {photosAvailable.has(emp.employeeNumber) ? (
+                            <Tooltip title="Foto de entrada — clic para ampliar">
+                              <Avatar
+                                src={getPhotoUrl(emp.employeeNumber, 'entry')}
+                                alt={`${emp.employeeName} entrada`}
+                                sx={{
+                                  width: 36,
+                                  height: 36,
+                                  cursor: 'pointer',
+                                  border: '2px solid #22c55e',
+                                  mx: 'auto',
+                                }}
+                                onClick={() =>
+                                  setPreviewPhoto(
+                                    getPhotoUrl(emp.employeeNumber, 'entry'),
+                                  )
+                                }
+                              />
+                            </Tooltip>
+                          ) : (
+                            <Avatar
+                              sx={{
+                                width: 36,
+                                height: 36,
+                                bgcolor: '#f3f4f6',
+                                color: '#d1d5db',
+                                fontSize: 11,
+                                mx: 'auto',
+                              }}
+                            >
+                              —
+                            </Avatar>
+                          )}
+                        </TableCell>
+                        {/* Exit photo */}
+                        <TableCell
+                          sx={{ textAlign: 'center', p: 0.5, width: 52 }}
+                        >
+                          {photosAvailable.has(emp.employeeNumber) &&
+                          emp.lastExit ? (
+                            <Tooltip title="Foto de salida — clic para ampliar">
+                              <Avatar
+                                src={getPhotoUrl(emp.employeeNumber, 'exit')}
+                                alt={`${emp.employeeName} salida`}
+                                sx={{
+                                  width: 36,
+                                  height: 36,
+                                  cursor: 'pointer',
+                                  border: '2px solid #ef4444',
+                                  mx: 'auto',
+                                }}
+                                onClick={() =>
+                                  setPreviewPhoto(
+                                    getPhotoUrl(emp.employeeNumber, 'exit'),
+                                  )
+                                }
+                              />
+                            </Tooltip>
+                          ) : (
+                            <Avatar
+                              sx={{
+                                width: 36,
+                                height: 36,
+                                bgcolor: '#f3f4f6',
+                                color: '#d1d5db',
+                                fontSize: 11,
+                                mx: 'auto',
+                              }}
+                            >
+                              —
+                            </Avatar>
+                          )}
+                        </TableCell>
                         <TableCell>
                           <Chip
                             label={emp.employeeNumber}
@@ -838,6 +952,8 @@ export default function LiveTab({
                   <TableHead>
                     <TableRow>
                       {[
+                        'Entrada',
+                        'Salida',
                         'Empleado',
                         'Nombre',
                         'Turno',
@@ -852,6 +968,9 @@ export default function LiveTab({
                             fontWeight: 600,
                             bgcolor: '#fafafa',
                             borderBottom: '2px solid #e5e7eb',
+                            ...(h === 'Entrada' || h === 'Salida'
+                              ? { textAlign: 'center', width: 52, p: 0.5 }
+                              : {}),
                           }}
                         >
                           {h}
@@ -868,6 +987,83 @@ export default function LiveTab({
                           transition: 'background 0.15s',
                         }}
                       >
+                        {/* Entry photo */}
+                        <TableCell
+                          sx={{ textAlign: 'center', p: 0.5, width: 52 }}
+                        >
+                          {photosAvailable.has(emp.employeeNumber) ? (
+                            <Tooltip title="Foto de entrada — clic para ampliar">
+                              <Avatar
+                                src={getPhotoUrl(emp.employeeNumber, 'entry')}
+                                alt={`${emp.employeeName} entrada`}
+                                sx={{
+                                  width: 36,
+                                  height: 36,
+                                  cursor: 'pointer',
+                                  border: '2px solid #22c55e',
+                                  mx: 'auto',
+                                }}
+                                onClick={() =>
+                                  setPreviewPhoto(
+                                    getPhotoUrl(emp.employeeNumber, 'entry'),
+                                  )
+                                }
+                              />
+                            </Tooltip>
+                          ) : (
+                            <Avatar
+                              sx={{
+                                width: 36,
+                                height: 36,
+                                bgcolor: '#f3f4f6',
+                                color: '#d1d5db',
+                                fontSize: 11,
+                                mx: 'auto',
+                              }}
+                            >
+                              —
+                            </Avatar>
+                          )}
+                        </TableCell>
+                        {/* Exit photo */}
+                        <TableCell
+                          sx={{ textAlign: 'center', p: 0.5, width: 52 }}
+                        >
+                          {photosAvailable.has(emp.employeeNumber) &&
+                          emp.lastExit ? (
+                            <Tooltip title="Foto de salida — clic para ampliar">
+                              <Avatar
+                                src={getPhotoUrl(emp.employeeNumber, 'exit')}
+                                alt={`${emp.employeeName} salida`}
+                                sx={{
+                                  width: 36,
+                                  height: 36,
+                                  cursor: 'pointer',
+                                  border: '2px solid #ef4444',
+                                  mx: 'auto',
+                                }}
+                                onClick={() =>
+                                  setPreviewPhoto(
+                                    getPhotoUrl(emp.employeeNumber, 'exit'),
+                                  )
+                                }
+                              />
+                            </Tooltip>
+                          ) : (
+                            <Avatar
+                              sx={{
+                                width: 36,
+                                height: 36,
+                                bgcolor: '#f3f4f6',
+                                color: '#d1d5db',
+                                fontSize: 11,
+                                mx: 'auto',
+                              }}
+                            >
+                              —
+                            </Avatar>
+                          )}
+                        </TableCell>
                         <TableCell>
                           <Chip
                             label={emp.employeeNumber}
@@ -1050,6 +1246,23 @@ export default function LiveTab({
                 </Button>
               </Paper>
             )}
+
+          {/* Photo preview dialog */}
+          <Dialog
+            open={!!previewPhoto}
+            onClose={() => setPreviewPhoto(null)}
+            maxWidth="sm"
+          >
+            {previewPhoto && (
+              <Box sx={{ p: 1 }}>
+                <img
+                  src={previewPhoto}
+                  alt="Foto empleado"
+                  style={{ width: '100%', borderRadius: 8 }}
+                />
+              </Box>
+            )}
+          </Dialog>
 
           {/* ── Footer ───────────────────────────────── */}
           <Box sx={{ mt: 2, display: 'flex', alignItems: 'center', gap: 0.5 }}>
