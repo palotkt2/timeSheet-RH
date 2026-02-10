@@ -2,6 +2,7 @@ import { NextResponse, NextRequest } from 'next/server';
 import { getMultiPlantDB } from '@/lib/multi-plant-db';
 import { getDB, initDB } from '@/lib/db';
 import { formatLocalDate, formatLocalDateTime } from '@/utils/dateUtils';
+import { inferEntryExit } from '@/utils/scanInference';
 
 interface EmployeeInfo {
   employee_number: string;
@@ -112,33 +113,14 @@ export async function GET(request: NextRequest) {
       employeeEntries.get(entry.employee_number)!.push(entry);
     });
 
-    // Dedup/infer helper: 15-min gap, alternating Entry/Exit
-    const DEDUP_GAP_MS = 15 * 60 * 1000;
-    function inferEntryExit(punches: PunchEntry[]): {
+    // Use shared inference module for consistent entry/exit logic
+    function inferForPunches(punches: PunchEntry[]): {
       entryTimes: Date[];
       exitTimes: Date[];
     } {
-      const sorted = [...punches].sort(
-        (a, b) =>
-          new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
-      );
-      const deduped: Date[] = [];
-      for (const p of sorted) {
-        const t = new Date(p.timestamp);
-        if (
-          deduped.length === 0 ||
-          t.getTime() - deduped[deduped.length - 1].getTime() >= DEDUP_GAP_MS
-        ) {
-          deduped.push(t);
-        }
-      }
-      const entryTimes: Date[] = [];
-      const exitTimes: Date[] = [];
-      for (let i = 0; i < deduped.length; i++) {
-        if (i % 2 === 0) entryTimes.push(deduped[i]);
-        else exitTimes.push(deduped[i]);
-      }
-      return { entryTimes, exitTimes };
+      const rawScans = punches.map((p) => new Date(p.timestamp));
+      const inferred = inferEntryExit(rawScans);
+      return { entryTimes: inferred.entries, exitTimes: inferred.exits };
     }
 
     const employees: Array<Record<string, unknown>> = [];
@@ -148,7 +130,7 @@ export async function GET(request: NextRequest) {
     for (const [empNum, punches] of employeeEntries) {
       const info = empMap.get(empNum);
 
-      const { entryTimes, exitTimes } = inferEntryExit(punches);
+      const { entryTimes, exitTimes } = inferForPunches(punches);
       const entryCount = entryTimes.length;
       const exitCount = exitTimes.length;
 

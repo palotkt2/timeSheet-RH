@@ -2,6 +2,11 @@ import { NextResponse } from 'next/server';
 import { getMultiPlantDB } from '@/lib/multi-plant-db';
 import { getDB, initDB } from '@/lib/db';
 import { formatLocalDate } from '@/utils/dateUtils';
+import {
+  inferEntryExit,
+  isEmployeeActive as checkActive,
+  calculateSessions,
+} from '@/utils/scanInference';
 
 interface EmployeeInfo {
   employee_number: string;
@@ -69,34 +74,24 @@ export async function GET() {
     const activeEmployees: Array<Record<string, unknown>> = [];
     let totalRecordsToday = 0;
 
-    // Minimum gap between first and last scan to consider it an exit
-    const MIN_GAP_MS = 60 * 60 * 1000; // 1 hour
-
     for (const [empNum, punches] of employeeEntries) {
       totalRecordsToday += punches.length;
       const info = empMap.get(empNum);
 
-      // Sort scans chronologically
-      const sorted = [...punches].sort(
-        (a, b) =>
-          new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
-      );
-      const firstScan = sorted[0];
-      const lastScan = sorted[sorted.length - 1];
-      const firstTime = new Date(firstScan.timestamp).getTime();
-      const lastTime = new Date(lastScan.timestamp).getTime();
-      const gap = lastTime - firstTime;
-
-      // Infer active status: if only 1 scan or all scans close together → active
-      const hasExit = sorted.length >= 2 && gap >= MIN_GAP_MS;
-      const isActive = !hasExit;
+      // Use shared inference module for consistent entry/exit logic
+      const rawScans = punches.map((p) => new Date(p.timestamp));
+      const inferred = inferEntryExit(rawScans);
+      const isActive = checkActive(inferred);
 
       if (isActive) {
         const plantsToday = [...new Set(punches.map((p) => p.plant_name))];
+        const firstEntry = inferred.entries[0];
+        const lastScan = inferred.deduped[inferred.deduped.length - 1];
 
-        // Calculate hours worked so far (from first scan to now)
+        // Calculate hours worked so far (from first entry to now)
         const now = new Date();
-        const hoursWorked = (now.getTime() - firstTime) / (1000 * 60 * 60);
+        const hoursWorked =
+          (now.getTime() - firstEntry.getTime()) / (1000 * 60 * 60);
 
         activeEmployees.push({
           employeeNumber: empNum,
@@ -107,10 +102,10 @@ export async function GET() {
             hoursWorked >= 0 && hoursWorked <= 24
               ? Math.round(hoursWorked * 100) / 100
               : 0,
-          firstEntry: firstScan.timestamp,
-          lastActivity: lastScan.timestamp,
-          totalEntries: 1,
-          totalExits: 0,
+          firstEntry: firstEntry.toISOString(),
+          lastActivity: lastScan.toISOString(),
+          totalEntries: inferred.entries.length,
+          totalExits: inferred.exits.length,
           plantsToday,
         });
       }

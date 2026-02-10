@@ -147,7 +147,7 @@ export interface SyncAllResult extends ApiResponse {
   message: string;
   summary: {
     plantsTotal: number;
-    plantsSuccessful: number;
+    plantsSuccess: number;
     plantsFailed: number;
     totalFetched: number;
     totalInserted: number;

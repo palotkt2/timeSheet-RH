@@ -6,6 +6,7 @@ import {
   formatLocalDateTime,
   createLocalDate,
 } from '@/utils/dateUtils';
+import { inferEntryExit } from '@/utils/scanInference';
 
 // ── Helpers ──
 
@@ -234,6 +235,7 @@ export async function GET(request: NextRequest) {
       employeeQuery = `SELECT employee_number, employee_name, employee_role, department FROM employee_shifts WHERE employee_number = ?`;
       employeeParams = [employeeNumber];
     } else if (shiftId) {
+      // First: get employees from local DB shift_assignments
       employeeQuery = `
         SELECT DISTINCT es.employee_number, es.employee_name, es.employee_role, es.department
         FROM employee_shifts es
@@ -260,10 +262,33 @@ export async function GET(request: NextRequest) {
       .all() as EmployeeRow[];
     mpEmployees.forEach((emp) => employeeMap.set(emp.employee_number, emp));
 
-    // Shifts
+    // If filtering by shiftId, also include employees from multi_plant.db shift_assignments
+    if (shiftId) {
+      const mpShiftEmployees = mpDb
+        .prepare(
+          `SELECT DISTINCT sa.employee_number
+           FROM shift_assignments sa
+           WHERE sa.active = 1 AND sa.shift_id = ?`,
+        )
+        .all(shiftId) as Array<{ employee_number: string }>;
+      for (const { employee_number } of mpShiftEmployees) {
+        if (!employeeMap.has(employee_number)) {
+          const emp = mpDb
+            .prepare(
+              `SELECT employee_number, employee_name, employee_role, department FROM employee_names WHERE employee_number = ?`,
+            )
+            .get(employee_number) as EmployeeRow | undefined;
+          if (emp) employeeMap.set(employee_number, emp);
+        }
+      }
+    }
+
+    // Shifts — merge from local DB + multi_plant.db
     const defaultShift = mainDb
       .prepare('SELECT * FROM shifts WHERE id = 1')
       .get() as ShiftRow | undefined;
+
+    // Local shift assignments
     const shiftAssignments = mainDb
       .prepare(
         `
@@ -285,6 +310,7 @@ export async function GET(request: NextRequest) {
         days: string;
       }
     >();
+    // Local assignments first
     shiftAssignments.forEach((a) => {
       employeeShiftMap.set(a.employee_id, {
         id: a.shift_id,
@@ -293,6 +319,32 @@ export async function GET(request: NextRequest) {
         end_time: a.end_time,
         tolerance_minutes: a.tolerance_minutes ?? 15,
         days: a.days,
+      });
+    });
+
+    // Multi-plant shift assignments (override local if present — remote plants are authoritative)
+    const mpShiftAssignments = mpDb
+      .prepare(
+        `SELECT sa.employee_number, sa.shift_id, sa.shift_name, sa.start_time, sa.end_time, sa.days
+         FROM shift_assignments sa
+         WHERE sa.active = 1`,
+      )
+      .all() as Array<{
+      employee_number: string;
+      shift_id: number;
+      shift_name: string;
+      start_time: string;
+      end_time: string;
+      days: string;
+    }>;
+    mpShiftAssignments.forEach((a) => {
+      employeeShiftMap.set(a.employee_number, {
+        id: a.shift_id,
+        name: a.shift_name || 'Turno Asignado',
+        start_time: a.start_time || '06:00',
+        end_time: a.end_time || '15:30',
+        tolerance_minutes: 15,
+        days: a.days || '[1,2,3,4,5]',
       });
     });
 
@@ -315,32 +367,12 @@ export async function GET(request: NextRequest) {
       day.plants.add(record.plant_name);
     });
 
-    // Infer entry/exit from temporal ordering
-    // For each employee per day: deduplicate close scans, then alternate Entry/Exit
-    const DEDUP_GAP_MS = 15 * 60 * 1000; // 15 minutes
+    // Infer entry/exit using shared inference module (consistent with Live view)
     for (const [, dates] of employeeData) {
       for (const [, dayRecords] of dates) {
-        const sorted = dayRecords.allScans.sort(
-          (a, b) => a.getTime() - b.getTime(),
-        );
-
-        // Deduplicate: skip scans within 15 min of the previous kept scan
-        const deduped: Date[] = [];
-        for (const scan of sorted) {
-          if (
-            deduped.length === 0 ||
-            scan.getTime() - deduped[deduped.length - 1].getTime() >=
-              DEDUP_GAP_MS
-          ) {
-            deduped.push(scan);
-          }
-        }
-
-        // Assign alternating Entry/Exit
-        for (let i = 0; i < deduped.length; i++) {
-          if (i % 2 === 0) dayRecords.entries.push(deduped[i]);
-          else dayRecords.exits.push(deduped[i]);
-        }
+        const inferred = inferEntryExit(dayRecords.allScans);
+        dayRecords.entries = inferred.entries;
+        dayRecords.exits = inferred.exits;
       }
     }
 
@@ -472,20 +504,19 @@ export async function GET(request: NextRequest) {
           daysLate++;
         }
 
-        // Overtime
+        // Overtime — compare total hours worked vs scheduled shift duration
         let dailyOvertimeHours = 0;
         if (!dailyData[date].isWorkday) {
           dailyOvertimeHours = dayHours;
-        } else if (exits.length > 0) {
-          const lastExit = exits[exits.length - 1];
-          const [endHour, endMin] = assignedShift.end_time
+        } else if (dayHours > 0) {
+          const [startH, startM] = assignedShift.start_time
             .split(':')
             .map(Number);
-          const shiftEnd = new Date(lastExit);
-          shiftEnd.setHours(endHour, endMin, 0, 0);
-          if (lastExit > shiftEnd)
-            dailyOvertimeHours =
-              (lastExit.getTime() - shiftEnd.getTime()) / (1000 * 60 * 60);
+          const [endH, endM] = assignedShift.end_time.split(':').map(Number);
+          const scheduledHours = endH + endM / 60 - (startH + startM / 60);
+          if (scheduledHours > 0 && dayHours > scheduledHours) {
+            dailyOvertimeHours = dayHours - scheduledHours;
+          }
         }
         totalOvertimeHours += dailyOvertimeHours;
 

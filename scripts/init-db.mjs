@@ -106,6 +106,7 @@ mpDb.exec(`
     adapter_type TEXT DEFAULT 'generic',
     auth_token TEXT,
     field_mapping TEXT,
+    use_https INTEGER DEFAULT 0,
     is_active INTEGER DEFAULT 1,
     last_sync TEXT,
     created_at TIMESTAMP DEFAULT (datetime('now','localtime')),
@@ -125,15 +126,59 @@ mpDb.exec(`
     UNIQUE(plant_id, employee_number, timestamp)
   );
 
+  CREATE TABLE IF NOT EXISTS employee_names (
+    employee_number TEXT PRIMARY KEY,
+    employee_name TEXT NOT NULL,
+    employee_role TEXT,
+    department TEXT,
+    source_plant_id INTEGER,
+    updated_at TIMESTAMP DEFAULT (datetime('now','localtime'))
+  );
+
+  CREATE TABLE IF NOT EXISTS shifts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_plant_id INTEGER NOT NULL,
+    remote_shift_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    start_time TEXT NOT NULL,
+    end_time TEXT NOT NULL,
+    tolerance_minutes INTEGER DEFAULT 0,
+    days TEXT DEFAULT '[1,2,3,4,5]',
+    is_active INTEGER DEFAULT 1,
+    custom_hours TEXT DEFAULT '{}',
+    synced_at TIMESTAMP DEFAULT (datetime('now','localtime')),
+    UNIQUE(source_plant_id, remote_shift_id)
+  );
+
+  CREATE TABLE IF NOT EXISTS shift_assignments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    employee_number TEXT NOT NULL,
+    shift_id INTEGER NOT NULL,
+    shift_name TEXT,
+    start_time TEXT,
+    end_time TEXT,
+    days TEXT,
+    start_date TEXT,
+    end_date TEXT,
+    active INTEGER DEFAULT 1,
+    source_plant_id INTEGER NOT NULL,
+    synced_at TIMESTAMP DEFAULT (datetime('now','localtime')),
+    UNIQUE(employee_number, source_plant_id)
+  );
+
   CREATE INDEX IF NOT EXISTS idx_pe_employee ON plant_entries(employee_number);
   CREATE INDEX IF NOT EXISTS idx_pe_timestamp ON plant_entries(timestamp);
   CREATE INDEX IF NOT EXISTS idx_pe_plant ON plant_entries(plant_id);
   CREATE INDEX IF NOT EXISTS idx_pe_emp_ts ON plant_entries(employee_number, timestamp);
   CREATE INDEX IF NOT EXISTS idx_pe_date ON plant_entries(date(timestamp));
+  CREATE INDEX IF NOT EXISTS idx_sa_employee ON shift_assignments(employee_number);
+  CREATE INDEX IF NOT EXISTS idx_sa_shift ON shift_assignments(shift_id);
 `);
 
 mpDb.close();
 console.log(`  ✔ multi_plant.db ${existed2 ? '(ya existía)' : 'creada'}`);
-console.log('    Tablas: plants, plant_entries\n');
+console.log(
+  '    Tablas: plants, plant_entries, employee_names, shifts, shift_assignments\n',
+);
 
 console.log('=== Bases de datos listas ===');

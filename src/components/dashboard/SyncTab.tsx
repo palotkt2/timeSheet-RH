@@ -23,6 +23,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import type { Plant, SyncStatus } from '@/types';
+import { formatLocalDate } from '@/utils/dateUtils';
 
 interface SyncLogEntry {
   time: string;
@@ -63,8 +64,8 @@ export default function SyncTab({
     const monday = new Date(today);
     const day = monday.getDay();
     monday.setDate(monday.getDate() - day + (day === 0 ? -6 : 1));
-    setStartDate(monday.toISOString().split('T')[0]);
-    setEndDate(today.toISOString().split('T')[0]);
+    setStartDate(formatLocalDate(monday));
+    setEndDate(formatLocalDate(today));
   }, []);
 
   useEffect(() => {

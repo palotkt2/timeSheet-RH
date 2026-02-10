@@ -1,6 +1,12 @@
 import { NextResponse } from 'next/server';
 import { getMultiPlantDB } from '@/lib/multi-plant-db';
 import { getDB, initDB } from '@/lib/db';
+import {
+  inferEntryExit,
+  isEmployeeActive,
+  calculateSessions,
+} from '@/utils/scanInference';
+import { formatLocalDateTime } from '@/utils/dateUtils';
 
 interface EmployeeInfo {
   employee_number: string;
@@ -112,9 +118,6 @@ export async function GET() {
       emp.plantsToday.add(entry.plant_name);
     });
 
-    // Minimum gap (ms) between first and last scan to consider the last one an exit
-    const MIN_GAP_MS = 60 * 60 * 1000; // 1 hour
-
     const activeEmployees: Array<Record<string, unknown>> = [];
     const completedEmployees: Array<Record<string, unknown>> = [];
     const allEmployeesToday: Array<Record<string, unknown>> = [];
@@ -123,33 +126,25 @@ export async function GET() {
       const info = empMap.get(empNum);
       const shift = shiftMap.get(empNum);
 
-      // Sort all scans chronologically
-      const sorted = [...data.entries].sort(
-        (a, b) =>
-          new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
+      // Collect raw scan timestamps
+      const rawScans = data.entries.map((e) => new Date(e.timestamp));
+
+      // Use shared inference module (same logic as Weekly Report)
+      const inferred = inferEntryExit(rawScans);
+      const active = isEmployeeActive(inferred);
+      const { sessions, totalHours } = calculateSessions(
+        inferred.entries,
+        inferred.exits,
       );
+      const workedHours = active ? 0 : totalHours;
 
-      const firstScan = sorted[0];
-      const lastScan = sorted[sorted.length - 1];
-      const firstTime = new Date(firstScan.timestamp).getTime();
-      const lastTime = new Date(lastScan.timestamp).getTime();
-      const gap = lastTime - firstTime;
+      data.lastAction = active ? 'Entrada' : 'Salida';
 
-      // Infer entry/exit from timing:
-      // - First scan of the day = always Entry
-      // - Last scan of the day = Exit IF enough time has passed (>1 hour gap)
-      const inferredEntries = 1;
-      const inferredExits = sorted.length >= 2 && gap >= MIN_GAP_MS ? 1 : 0;
-      const isActive = inferredExits === 0;
-
-      // For display: compute worked hours if completed
-      const workedHours =
-        inferredExits > 0
-          ? Math.round((gap / (1000 * 60 * 60)) * 100) / 100
-          : 0;
-
-      // Update lastAction based on inference
-      data.lastAction = isActive ? 'Entrada' : 'Salida';
+      const firstEntry = inferred.entries[0] ?? null;
+      const lastExit =
+        inferred.exits.length > 0
+          ? inferred.exits[inferred.exits.length - 1]
+          : null;
 
       const empResult = {
         employeeNumber: empNum,
@@ -160,12 +155,17 @@ export async function GET() {
         lastTimestamp: data.lastTimestamp,
         lastPlant: data.lastPlant,
         plantsToday: [...data.plantsToday],
-        totalEntries: inferredEntries,
-        totalExits: inferredExits,
-        isActive,
-        firstEntry: firstScan.timestamp,
-        lastExit: inferredExits > 0 ? lastScan.timestamp : null,
+        totalEntries: inferred.entries.length,
+        totalExits: inferred.exits.length,
+        isActive: active,
+        firstEntry: firstEntry ? formatLocalDateTime(firstEntry) : null,
+        lastExit: lastExit ? formatLocalDateTime(lastExit) : null,
         workedHours,
+        sessions: sessions.map((s) => ({
+          entry: formatLocalDateTime(s.entry),
+          exit: formatLocalDateTime(s.exit),
+          hours: s.hours,
+        })),
         shiftName: shift?.shiftName || null,
         shiftStartTime: shift?.startTime || null,
         shiftEndTime: shift?.endTime || null,

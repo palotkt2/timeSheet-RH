@@ -33,7 +33,12 @@ export async function POST(request: NextRequest) {
       plantId: number;
       plantName: string;
       success: boolean;
-      stats?: { fetched: number; inserted: number; duplicates: number };
+      stats?: {
+        fetched: number;
+        inserted: number;
+        duplicates: number;
+        namesUpdated: number;
+      };
       error?: string;
     }
 
@@ -70,6 +75,53 @@ export async function POST(request: NextRequest) {
           "UPDATE plants SET last_sync = datetime('now', 'localtime') WHERE id = ?",
         ).run(plant.id);
 
+        // Auto-register new employees in employee_names table
+        const uniqueEmployees = [
+          ...new Set(entries.map((e) => e.employee_number)),
+        ];
+        const registerStmt = db.prepare(
+          `INSERT OR IGNORE INTO employee_names (employee_number, employee_name, source_plant_id, updated_at)
+           VALUES (?, ?, ?, datetime('now', 'localtime'))`,
+        );
+        const registerMany = db.transaction((empNumbers: string[]) => {
+          for (const empNum of empNumbers) {
+            registerStmt.run(empNum, `Empleado #${empNum}`, plant.id);
+          }
+        });
+        registerMany(uniqueEmployees);
+
+        // Try to fetch real employee names from the remote plant
+        let namesUpdated = 0;
+        try {
+          const remoteEmployees =
+            await adapter.fetchEmployeeNames(uniqueEmployees);
+          if (remoteEmployees.length > 0) {
+            const nameStmt = db.prepare(
+              `UPDATE employee_names SET
+                 employee_name = ?,
+                 employee_role = COALESCE(?, employee_role),
+                 department = COALESCE(?, department),
+                 updated_at = datetime('now', 'localtime')
+               WHERE employee_number = ? AND employee_name LIKE 'Empleado #%'`,
+            );
+            const updateNames = db.transaction(() => {
+              for (const emp of remoteEmployees) {
+                if (emp.employee_name.startsWith('Empleado #')) continue;
+                const r = nameStmt.run(
+                  emp.employee_name,
+                  emp.employee_role,
+                  emp.department,
+                  emp.employee_number,
+                );
+                if (r.changes > 0) namesUpdated++;
+              }
+            });
+            updateNames();
+          }
+        } catch {
+          // Non-critical: don't fail the sync if name fetch fails
+        }
+
         results.push({
           plantId: plant.id,
           plantName: plant.name,
@@ -78,6 +130,7 @@ export async function POST(request: NextRequest) {
             fetched: entries?.length || 0,
             inserted,
             duplicates: (entries?.length || 0) - inserted,
+            namesUpdated,
           },
         });
       } catch (plantError: unknown) {

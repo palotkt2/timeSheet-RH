@@ -2,6 +2,7 @@ import { NextResponse, NextRequest } from 'next/server';
 import { getMultiPlantDB } from '@/lib/multi-plant-db';
 import { getDB, initDB } from '@/lib/db';
 import { formatLocalDate } from '@/utils/dateUtils';
+import { inferEntryExit } from '@/utils/scanInference';
 
 interface EmployeeInfo {
   employee_number: string;
@@ -71,34 +72,15 @@ export async function GET(request: NextRequest) {
     let validCount = 0;
     let invalidCount = 0;
 
-    // Dedup/infer helper: 15-min gap, alternating Entry/Exit
-    const DEDUP_GAP_MS = 15 * 60 * 1000;
-
     for (const [empNum, punches] of employeeEntries) {
       const info = empMap.get(empNum);
       const plantsUsed = [...new Set(punches.map((p) => p.plant_name))];
 
-      // Infer entry/exit from temporal ordering
-      const sorted = [...punches].sort(
-        (a, b) =>
-          new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
-      );
-      const deduped: Date[] = [];
-      for (const p of sorted) {
-        const t = new Date(p.timestamp);
-        if (
-          deduped.length === 0 ||
-          t.getTime() - deduped[deduped.length - 1].getTime() >= DEDUP_GAP_MS
-        ) {
-          deduped.push(t);
-        }
-      }
-      const entryTimes: Date[] = [];
-      const exitTimes: Date[] = [];
-      for (let i = 0; i < deduped.length; i++) {
-        if (i % 2 === 0) entryTimes.push(deduped[i]);
-        else exitTimes.push(deduped[i]);
-      }
+      // Use shared inference module for consistent entry/exit logic
+      const rawScans = punches.map((p) => new Date(p.timestamp));
+      const inferred = inferEntryExit(rawScans);
+      const entryTimes = inferred.entries;
+      const exitTimes = inferred.exits;
 
       const entryCount = entryTimes.length;
       const exitCount = exitTimes.length;
@@ -131,7 +113,7 @@ export async function GET(request: NextRequest) {
 
       // Validate hours
       if (totalHours === 0 && punches.length > 0) {
-        if (deduped.length === 1) {
+        if (inferred.deduped.length === 1) {
           issues.push('Solo un registro (sin salida inferible)');
         } else {
           issues.push('Sin horas calculadas a pesar de tener registros');
@@ -153,9 +135,9 @@ export async function GET(request: NextRequest) {
       }
 
       // Flag duplicate scans (raw count much higher than deduped)
-      if (punches.length > deduped.length + 1) {
+      if (punches.length > inferred.deduped.length + 1) {
         issues.push(
-          `${punches.length - deduped.length} registro(s) duplicados filtrados`,
+          `${punches.length - inferred.deduped.length} registro(s) duplicados filtrados`,
         );
       }
 

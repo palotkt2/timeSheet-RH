@@ -120,13 +120,42 @@ export default function EmployeesTab() {
   const handleImportCSV = async () => {
     if (!csvText.trim()) return;
     try {
+      const parseCsvLine = (line: string): string[] => {
+        const result: string[] = [];
+        let cur = '';
+        let inQuotes = false;
+        for (let i = 0; i < line.length; i++) {
+          const ch = line[i];
+          if (inQuotes) {
+            if (ch === '"' && line[i + 1] === '"') {
+              cur += '"';
+              i++;
+            } else if (ch === '"') {
+              inQuotes = false;
+            } else {
+              cur += ch;
+            }
+          } else {
+            if (ch === '"') {
+              inQuotes = true;
+            } else if (ch === ',') {
+              result.push(cur.trim());
+              cur = '';
+            } else {
+              cur += ch;
+            }
+          }
+        }
+        result.push(cur.trim());
+        return result;
+      };
       const lines = csvText
         .trim()
         .split('\n')
         .filter((l) => l.trim());
       const employees = lines
         .map((line) => {
-          const parts = line.split(',').map((p) => p.trim());
+          const parts = parseCsvLine(line);
           return {
             employee_number: parts[0],
             employee_name: parts[1] || `Empleado #${parts[0]}`,
@@ -155,11 +184,22 @@ export default function EmployeesTab() {
     }
   };
 
+  const csvField = (v: string) => {
+    if (/[,"\r\n]/.test(v)) return `"${v.replace(/"/g, '""')}"`;
+    return v;
+  };
+
   const exportCSV = () => {
     const header = 'Número,Nombre,Puesto,Departamento';
-    const rows = employees.map(
-      (e) =>
-        `${e.employee_number},${e.employee_name},${e.employee_role || ''},${e.department || ''}`,
+    const rows = employees.map((e) =>
+      [
+        e.employee_number,
+        e.employee_name,
+        e.employee_role || '',
+        e.department || '',
+      ]
+        .map(csvField)
+        .join(','),
     );
     const csv = [header, ...rows].join('\n');
     const blob = new Blob(['\ufeff' + csv], {
