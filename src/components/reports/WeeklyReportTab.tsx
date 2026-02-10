@@ -793,7 +793,9 @@ export default function WeeklyReportTab() {
                         whiteSpace: 'nowrap',
                       }}
                     >
-                      <Tooltip title={`${emp.employeeRole} — ${emp.shift}`}>
+                      <Tooltip
+                        title={`${emp.employeeRole} — ${emp.shift} (${emp.shiftStartTime}–${emp.shiftEndTime}) | Total: ${emp.totalHours}h | Extra: ${emp.totalOvertimeHours}h | Asist: ${emp.attendanceRate}%`}
+                      >
                         <span>{emp.employeeName}</span>
                       </Tooltip>
                     </TableCell>
@@ -814,7 +816,7 @@ export default function WeeklyReportTab() {
                           <Tooltip
                             title={
                               dayData?.plantsUsed?.length
-                                ? `${dayData.plantsUsed.join(', ')} | ${dayData.hours || 0}h`
+                                ? `${dayData.plantsUsed.join(', ')} | ${dayData.hours || 0}h${(dayData.overtimeHours ?? 0) > 0 ? ` (Extra: ${dayData.overtimeHours}h)` : ''}${dayData.firstEntry ? ` | ${dayData.firstEntry.split('T').pop()?.slice(0, 5) ?? ''}–${dayData.lastExit?.split('T').pop()?.slice(0, 5) ?? '?'}` : ''}`
                                 : ''
                             }
                           >
