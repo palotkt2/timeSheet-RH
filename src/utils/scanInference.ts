@@ -11,8 +11,8 @@
  *   4. If only 1 scan remains → Entry only (employee is "active" / "Sin salida").
  */
 
-/** Minimum gap between scans to count as distinct events (15 min). */
-export const DEDUP_GAP_MS = 15 * 60 * 1000;
+/** Minimum gap between scans to count as distinct events (5 min). */
+export const DEDUP_GAP_MS = 5 * 60 * 1000;
 
 export interface InferredScans {
   /** Deduplicated & sorted timestamps kept after dedup */
@@ -114,4 +114,57 @@ export function calculateSessions(
   }
 
   return { sessions, totalHours: Math.round(totalHours * 100) / 100 };
+}
+
+// ── Night-shift helpers ──
+
+/**
+ * Build a map of employee → night-shift boundary hour.
+ * Night shift = shift start hour > shift end hour (crosses midnight).
+ * Boundary = midpoint of off-shift period; early-morning scans (hour < boundary)
+ * are remapped to the previous calendar day.
+ */
+export function buildNightShiftBoundary<
+  T extends { start_time: string; end_time: string },
+>(shifts: Map<string, T>): Map<string, number> {
+  const boundary = new Map<string, number>();
+  for (const [empNum, shift] of shifts) {
+    const sh = parseInt(shift.start_time.split(':')[0]);
+    const eh = parseInt(shift.end_time.split(':')[0]);
+    if (sh > eh) {
+      boundary.set(empNum, Math.floor((sh + eh) / 2));
+    }
+  }
+  return boundary;
+}
+
+/**
+ * Remap the logical work-date of a scan for night-shift employees.
+ * Early-morning scans (before boundary hour) are assigned to the previous day.
+ *
+ * @param workDate   - calendar date of the scan (YYYY-MM-DD)
+ * @param timestamp  - full ISO timestamp of the scan
+ * @param boundary   - night-shift boundary map from buildNightShiftBoundary
+ * @param empNum     - employee number
+ * @returns logical work-date string (YYYY-MM-DD)
+ */
+export function remapNightShiftDate(
+  workDate: string,
+  timestamp: string,
+  boundary: Map<string, number>,
+  empNum: string,
+): string {
+  const bh = boundary.get(empNum);
+  if (bh !== undefined) {
+    const scanHour = new Date(timestamp).getHours();
+    if (scanHour < bh) {
+      const d = new Date(workDate + 'T00:00:00');
+      d.setDate(d.getDate() - 1);
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const dd = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${dd}`;
+    }
+  }
+  return workDate;
 }

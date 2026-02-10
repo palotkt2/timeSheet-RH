@@ -1,8 +1,17 @@
 import { NextResponse, NextRequest } from 'next/server';
 import { getMultiPlantDB } from '@/lib/multi-plant-db';
 import { getDB, initDB } from '@/lib/db';
-import { formatLocalDate, formatLocalDateTime } from '@/utils/dateUtils';
-import { inferEntryExit } from '@/utils/scanInference';
+import {
+  formatLocalDate,
+  formatLocalDateTime,
+  createLocalDate,
+} from '@/utils/dateUtils';
+import {
+  inferEntryExit,
+  calculateSessions,
+  buildNightShiftBoundary,
+  remapNightShiftDate,
+} from '@/utils/scanInference';
 
 interface EmployeeInfo {
   employee_number: string;
@@ -16,46 +25,7 @@ interface PunchEntry {
   timestamp: string;
   action: string;
   plant_name: string;
-}
-
-interface Session {
-  entry: string;
-  exit: string;
-  hoursWorked: number;
-}
-
-function calculateSessions(
-  entryTimes: Date[],
-  exitTimes: Date[],
-): { sessions: Session[]; totalHours: number } {
-  const sessions: Session[] = [];
-  let totalHours = 0;
-  let exitIdx = 0;
-
-  entryTimes.sort((a, b) => a.getTime() - b.getTime());
-  exitTimes.sort((a, b) => a.getTime() - b.getTime());
-
-  for (let i = 0; i < entryTimes.length; i++) {
-    const entryTime = entryTimes[i];
-    while (exitIdx < exitTimes.length && exitTimes[exitIdx] <= entryTime)
-      exitIdx++;
-
-    if (exitIdx < exitTimes.length) {
-      const hours =
-        (exitTimes[exitIdx].getTime() - entryTime.getTime()) / (1000 * 60 * 60);
-      if (hours >= 0.1 && hours <= 24) {
-        sessions.push({
-          entry: formatLocalDateTime(entryTime),
-          exit: formatLocalDateTime(exitTimes[exitIdx]),
-          hoursWorked: Math.round(hours * 100) / 100,
-        });
-        totalHours += hours;
-        exitIdx++;
-      }
-    }
-  }
-
-  return { sessions, totalHours: Math.round(totalHours * 100) / 100 };
+  workDate: string;
 }
 
 /**
@@ -72,14 +42,53 @@ export async function GET(request: NextRequest) {
     const mpDb = getMultiPlantDB();
     const mainDb = getDB();
 
-    // Get all entries for the date from all plants
+    // Load shift assignments for night-shift detection
+    const mpShifts = mpDb
+      .prepare(
+        `SELECT employee_number, start_time, end_time FROM shift_assignments WHERE active = 1`,
+      )
+      .all() as Array<{
+      employee_number: string;
+      start_time: string;
+      end_time: string;
+    }>;
+    const localShifts = mainDb
+      .prepare(
+        `SELECT sa.employee_id as employee_number, s.start_time, s.end_time
+         FROM shift_assignments sa INNER JOIN shifts s ON sa.shift_id = s.id
+         WHERE sa.active = 1`,
+      )
+      .all() as Array<{
+      employee_number: string;
+      start_time: string;
+      end_time: string;
+    }>;
+    const shiftMap = new Map<
+      string,
+      { start_time: string; end_time: string }
+    >();
+    localShifts.forEach((s) => shiftMap.set(s.employee_number, s));
+    mpShifts.forEach((s) => shiftMap.set(s.employee_number, s));
+    const nightShiftBoundary = buildNightShiftBoundary(shiftMap);
+
+    // Extend query by ±1 day to capture night-shift scans that cross midnight
+    const dayBefore = createLocalDate(dateParam);
+    dayBefore.setDate(dayBefore.getDate() - 1);
+    const dayAfter = createLocalDate(dateParam);
+    dayAfter.setDate(dayAfter.getDate() + 1);
+
+    // Get all entries for the extended range from all plants
     let query = `
-      SELECT pe.employee_number, pe.timestamp, pe.action, p.name as plant_name
+      SELECT pe.employee_number, pe.timestamp, pe.action, p.name as plant_name,
+             date(pe.timestamp) as workDate
       FROM plant_entries pe
       INNER JOIN plants p ON pe.plant_id = p.id
-      WHERE date(pe.timestamp) = ?
+      WHERE date(pe.timestamp) BETWEEN ? AND ?
     `;
-    const params: string[] = [dateParam];
+    const params: string[] = [
+      formatLocalDate(dayBefore),
+      formatLocalDate(dayAfter),
+    ];
 
     if (employeeNumber?.trim()) {
       query += ` AND pe.employee_number = ?`;
@@ -87,7 +96,21 @@ export async function GET(request: NextRequest) {
     }
     query += ` ORDER BY pe.employee_number ASC, pe.timestamp ASC`;
 
-    const entries = mpDb.prepare(query).all(...params) as PunchEntry[];
+    const allEntries = mpDb.prepare(query).all(...params) as PunchEntry[];
+
+    // Remap night-shift scans and filter to target date
+    const entries: PunchEntry[] = [];
+    for (const entry of allEntries) {
+      const logicalDate = remapNightShiftDate(
+        entry.workDate,
+        entry.timestamp,
+        nightShiftBoundary,
+        entry.employee_number,
+      );
+      if (logicalDate === dateParam) {
+        entries.push(entry);
+      }
+    }
 
     // Employee info — prefer employee_names from multi_plant.db
     const employeeInfo = mpDb
@@ -134,7 +157,15 @@ export async function GET(request: NextRequest) {
       const entryCount = entryTimes.length;
       const exitCount = exitTimes.length;
 
-      const { sessions, totalHours } = calculateSessions(entryTimes, exitTimes);
+      const { sessions: rawSessions, totalHours } = calculateSessions(
+        entryTimes,
+        exitTimes,
+      );
+      const sessions = rawSessions.map((s) => ({
+        entry: formatLocalDateTime(s.entry),
+        exit: formatLocalDateTime(s.exit),
+        hoursWorked: s.hours,
+      }));
       totalHoursWorked += totalHours;
 
       const plantsUsed = [...new Set(punches.map((p) => p.plant_name))];
@@ -156,10 +187,7 @@ export async function GET(request: NextRequest) {
 
       // Calculate unpaired
       const unpairedEntries = Math.max(0, entryCount - sessions.length);
-      const unpairedExits = Math.max(
-        0,
-        exitCount - sessions.length - (exitCount > entryCount ? 1 : 0),
-      );
+      const unpairedExits = Math.max(0, exitCount - sessions.length);
 
       const firstEntry =
         entryTimes.length > 0

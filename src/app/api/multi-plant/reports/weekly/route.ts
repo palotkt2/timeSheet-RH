@@ -6,7 +6,12 @@ import {
   formatLocalDateTime,
   createLocalDate,
 } from '@/utils/dateUtils';
-import { inferEntryExit } from '@/utils/scanInference';
+import {
+  inferEntryExit,
+  calculateSessions,
+  buildNightShiftBoundary,
+  remapNightShiftDate,
+} from '@/utils/scanInference';
 
 // ── Helpers ──
 
@@ -20,36 +25,16 @@ function calculateDailyHours(
   entries: Date[],
   exits: Date[],
 ): { totalHours: number; sessions: Session[] } {
-  let totalHours = 0;
-  const sessions: Session[] = [];
-  let exitIndex = 0;
-
-  const sortedEntries = [...entries].sort((a, b) => a.getTime() - b.getTime());
-  const sortedExits = [...exits].sort((a, b) => a.getTime() - b.getTime());
-
-  for (let i = 0; i < sortedEntries.length; i++) {
-    const entryTime = sortedEntries[i];
-    while (
-      exitIndex < sortedExits.length &&
-      sortedExits[exitIndex] <= entryTime
-    )
-      exitIndex++;
-    if (exitIndex < sortedExits.length) {
-      const exitTime = sortedExits[exitIndex];
-      const hours =
-        (exitTime.getTime() - entryTime.getTime()) / (1000 * 60 * 60);
-      if (hours >= 0.1 && hours <= 24) {
-        sessions.push({
-          entry: formatLocalDateTime(entryTime),
-          exit: formatLocalDateTime(exitTime),
-          hours: Math.round(hours * 100) / 100,
-        });
-        totalHours += hours;
-        exitIndex++;
-      }
-    }
-  }
-  return { totalHours: Math.round(totalHours * 100) / 100, sessions };
+  const { sessions: rawSessions, totalHours } = calculateSessions(
+    entries,
+    exits,
+  );
+  const sessions: Session[] = rawSessions.map((s) => ({
+    entry: formatLocalDateTime(s.entry),
+    exit: formatLocalDateTime(s.exit),
+    hours: s.hours,
+  }));
+  return { totalHours, sessions };
 }
 
 function getDayStatus(
@@ -362,33 +347,17 @@ export async function GET(request: NextRequest) {
     });
 
     // Detect night shift employees for cross-midnight date remapping
-    // Night shift = start hour > end hour (e.g., 22:00 > 06:00)
-    const nightShiftBoundary = new Map<string, number>();
-    for (const [empNumber, shift] of employeeShiftMap) {
-      const sh = parseInt(shift.start_time.split(':')[0]);
-      const eh = parseInt(shift.end_time.split(':')[0]);
-      if (sh > eh) {
-        // Boundary = midpoint of off-shift period
-        // e.g., 22:00-06:00 → (22+6)/2 = 14 → scans before 14:00 go to prev day
-        nightShiftBoundary.set(empNumber, Math.floor((sh + eh) / 2));
-      }
-    }
+    const nightShiftBoundary = buildNightShiftBoundary(employeeShiftMap);
 
     // Group records by employee → shift day (adjusting for night-shift cross-midnight)
     const employeeData = new Map<string, Map<string, DayRecords>>();
     records.forEach((record) => {
-      let workDate = record.workDate;
-
-      // Night shift: remap early-morning scans to previous day's shift
-      const boundary = nightShiftBoundary.get(record.employeeNumber);
-      if (boundary !== undefined) {
-        const scanHour = new Date(record.timestamp).getHours();
-        if (scanHour < boundary) {
-          const prevDate = createLocalDate(record.workDate);
-          prevDate.setDate(prevDate.getDate() - 1);
-          workDate = formatLocalDate(prevDate);
-        }
-      }
+      const workDate = remapNightShiftDate(
+        record.workDate,
+        record.timestamp,
+        nightShiftBoundary,
+        record.employeeNumber,
+      );
 
       if (!employeeData.has(record.employeeNumber))
         employeeData.set(record.employeeNumber, new Map());

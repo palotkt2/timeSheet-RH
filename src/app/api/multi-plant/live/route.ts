@@ -5,8 +5,10 @@ import {
   inferEntryExit,
   isEmployeeActive,
   calculateSessions,
+  buildNightShiftBoundary,
+  remapNightShiftDate,
 } from '@/utils/scanInference';
-import { formatLocalDateTime } from '@/utils/dateUtils';
+import { formatLocalDateTime, formatLocalDate } from '@/utils/dateUtils';
 
 interface EmployeeInfo {
   employee_number: string;
@@ -42,17 +44,66 @@ export async function GET() {
     const today = new Date();
     const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 
-    const entries = mpDb
+    // Query yesterday + today to capture night-shift scans that cross midnight
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayStr = formatLocalDate(yesterday);
+
+    // Load shift assignments for night-shift detection
+    const mpShifts = mpDb
+      .prepare(
+        `SELECT employee_number, start_time, end_time FROM shift_assignments WHERE active = 1`,
+      )
+      .all() as Array<{
+      employee_number: string;
+      start_time: string;
+      end_time: string;
+    }>;
+    const localShifts = mainDb
+      .prepare(
+        `SELECT sa.employee_id as employee_number, s.start_time, s.end_time
+         FROM shift_assignments sa INNER JOIN shifts s ON sa.shift_id = s.id
+         WHERE sa.active = 1`,
+      )
+      .all() as Array<{
+      employee_number: string;
+      start_time: string;
+      end_time: string;
+    }>;
+    const nsShiftMap = new Map<
+      string,
+      { start_time: string; end_time: string }
+    >();
+    localShifts.forEach((s) => nsShiftMap.set(s.employee_number, s));
+    mpShifts.forEach((s) => nsShiftMap.set(s.employee_number, s));
+    const nightShiftBoundary = buildNightShiftBoundary(nsShiftMap);
+
+    const allEntries = mpDb
       .prepare(
         `
-      SELECT pe.employee_number, pe.timestamp, pe.action, pe.plant_id, p.name as plant_name
+      SELECT pe.employee_number, pe.timestamp, pe.action, pe.plant_id, p.name as plant_name,
+             date(pe.timestamp) as workDate
       FROM plant_entries pe
       INNER JOIN plants p ON pe.plant_id = p.id
-      WHERE date(pe.timestamp) = ?
+      WHERE date(pe.timestamp) BETWEEN ? AND ?
       ORDER BY pe.employee_number ASC, pe.timestamp ASC
     `,
       )
-      .all(dateStr) as PunchEntry[];
+      .all(yesterdayStr, dateStr) as (PunchEntry & { workDate: string })[];
+
+    // Remap night-shift scans and filter to today
+    const entries: PunchEntry[] = [];
+    for (const entry of allEntries) {
+      const logicalDate = remapNightShiftDate(
+        entry.workDate,
+        entry.timestamp,
+        nightShiftBoundary,
+        entry.employee_number,
+      );
+      if (logicalDate === dateStr) {
+        entries.push(entry);
+      }
+    }
 
     const employeeInfo = mpDb
       .prepare(

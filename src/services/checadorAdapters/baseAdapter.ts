@@ -87,6 +87,24 @@ export abstract class BaseAdapter {
   ): Promise<AdapterEntry[]>;
 
   /**
+   * Fetch entries with client-side date filtering as a safety net.
+   * Ensures no out-of-range records slip through even if the remote API
+   * doesn't honour the date parameters.
+   */
+  async fetchEntriesFiltered(
+    startDate: string,
+    endDate: string,
+  ): Promise<AdapterEntry[]> {
+    const all = await this.fetchEntries(startDate, endDate);
+    const start = new Date(startDate + 'T00:00:00');
+    const end = new Date(endDate + 'T23:59:59');
+    return all.filter((e) => {
+      const ts = new Date(e.timestamp);
+      return ts >= start && ts <= end;
+    });
+  }
+
+  /**
    * Fetch employee names/info from the remote plant.
    * @param employeeNumbers - optional list of employee numbers to look up.
    * Returns only employees with real names (not placeholders).

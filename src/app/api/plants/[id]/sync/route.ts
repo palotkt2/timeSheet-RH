@@ -32,7 +32,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     }
 
     const adapter = createAdapter(plant);
-    const entries = await adapter.fetchEntries(startDate, endDate);
+    const entries = await adapter.fetchEntriesFiltered(startDate, endDate);
 
     if (!entries || entries.length === 0) {
       db.prepare(

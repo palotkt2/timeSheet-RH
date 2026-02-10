@@ -1,8 +1,13 @@
 import { NextResponse, NextRequest } from 'next/server';
 import { getMultiPlantDB } from '@/lib/multi-plant-db';
 import { getDB, initDB } from '@/lib/db';
-import { formatLocalDate } from '@/utils/dateUtils';
-import { inferEntryExit } from '@/utils/scanInference';
+import { formatLocalDate, createLocalDate } from '@/utils/dateUtils';
+import {
+  inferEntryExit,
+  calculateSessions,
+  buildNightShiftBoundary,
+  remapNightShiftDate,
+} from '@/utils/scanInference';
 
 interface EmployeeInfo {
   employee_number: string;
@@ -16,6 +21,7 @@ interface PunchEntry {
   timestamp: string;
   action: string;
   plant_name: string;
+  workDate: string;
 }
 
 /**
@@ -31,18 +37,71 @@ export async function GET(request: NextRequest) {
     const mpDb = getMultiPlantDB();
     const mainDb = getDB();
 
-    // Get all entries for the date
-    const entries = mpDb
+    // Load shift assignments for night-shift detection
+    const mpShifts = mpDb
+      .prepare(
+        `SELECT employee_number, start_time, end_time FROM shift_assignments WHERE active = 1`,
+      )
+      .all() as Array<{
+      employee_number: string;
+      start_time: string;
+      end_time: string;
+    }>;
+    const localShifts = mainDb
+      .prepare(
+        `SELECT sa.employee_id as employee_number, s.start_time, s.end_time
+         FROM shift_assignments sa INNER JOIN shifts s ON sa.shift_id = s.id
+         WHERE sa.active = 1`,
+      )
+      .all() as Array<{
+      employee_number: string;
+      start_time: string;
+      end_time: string;
+    }>;
+    const shiftMap = new Map<
+      string,
+      { start_time: string; end_time: string }
+    >();
+    localShifts.forEach((s) => shiftMap.set(s.employee_number, s));
+    mpShifts.forEach((s) => shiftMap.set(s.employee_number, s));
+    const nightShiftBoundary = buildNightShiftBoundary(shiftMap);
+
+    // Extend query by ±1 day to capture night-shift scans
+    const dayBefore = createLocalDate(dateParam);
+    dayBefore.setDate(dayBefore.getDate() - 1);
+    const dayAfter = createLocalDate(dateParam);
+    dayAfter.setDate(dayAfter.getDate() + 1);
+
+    // Get entries for extended range
+    const allEntries = mpDb
       .prepare(
         `
-        SELECT pe.employee_number, pe.timestamp, pe.action, p.name as plant_name
+        SELECT pe.employee_number, pe.timestamp, pe.action, p.name as plant_name,
+               date(pe.timestamp) as workDate
         FROM plant_entries pe
         INNER JOIN plants p ON pe.plant_id = p.id
-        WHERE date(pe.timestamp) = ?
+        WHERE date(pe.timestamp) BETWEEN ? AND ?
         ORDER BY pe.employee_number ASC, pe.timestamp ASC
       `,
       )
-      .all(dateParam) as PunchEntry[];
+      .all(
+        formatLocalDate(dayBefore),
+        formatLocalDate(dayAfter),
+      ) as PunchEntry[];
+
+    // Remap night-shift scans and filter to target date
+    const entries: PunchEntry[] = [];
+    for (const entry of allEntries) {
+      const logicalDate = remapNightShiftDate(
+        entry.workDate,
+        entry.timestamp,
+        nightShiftBoundary,
+        entry.employee_number,
+      );
+      if (logicalDate === dateParam) {
+        entries.push(entry);
+      }
+    }
 
     // Employee info — prefer employee_names from multi_plant.db
     const employeeInfo = mpDb
@@ -87,29 +146,20 @@ export async function GET(request: NextRequest) {
 
       const issues: string[] = [];
 
-      // Calculate hours from inferred sessions
-      let totalHours = 0;
-      let exitIdx = 0;
+      // Calculate hours from inferred sessions using shared calculator
+      const { sessions, totalHours: rawTotalHours } = calculateSessions(
+        entryTimes,
+        exitTimes,
+      );
+      let totalHours = rawTotalHours;
 
-      for (let i = 0; i < entryTimes.length; i++) {
-        const entryTime = entryTimes[i];
-        while (exitIdx < exitTimes.length && exitTimes[exitIdx] <= entryTime)
-          exitIdx++;
-
-        if (exitIdx < exitTimes.length) {
-          const hours =
-            (exitTimes[exitIdx].getTime() - entryTime.getTime()) /
-            (1000 * 60 * 60);
-          if (hours >= 0.1 && hours <= 24) {
-            totalHours += hours;
-            exitIdx++;
-          } else if (hours > 24) {
-            issues.push('Sesión con duración mayor a 24 horas detectada');
-          }
+      // Check for >24h sessions (calculateSessions already filters these,
+      // but flag them as validation issues)
+      for (const s of sessions) {
+        if (s.hours > 24) {
+          issues.push('Sesión con duración mayor a 24 horas detectada');
         }
       }
-
-      totalHours = Math.round(totalHours * 100) / 100;
 
       // Validate hours
       if (totalHours === 0 && punches.length > 0) {

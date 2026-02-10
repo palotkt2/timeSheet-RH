@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
     for (const plant of plants) {
       try {
         const adapter = createAdapter(plant);
-        const entries = await adapter.fetchEntries(startDate, endDate);
+        const entries = await adapter.fetchEntriesFiltered(startDate, endDate);
 
         let inserted = 0;
         if (entries && entries.length > 0) {

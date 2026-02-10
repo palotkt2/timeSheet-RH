@@ -49,9 +49,48 @@ export function getMultiPlantDB(): Database.Database {
         synced_at TIMESTAMP DEFAULT (datetime('now', 'localtime')),
         created_at TIMESTAMP DEFAULT (datetime('now', 'localtime')),
         FOREIGN KEY (plant_id) REFERENCES plants(id) ON DELETE CASCADE,
-        UNIQUE(plant_id, employee_number, timestamp)
+        UNIQUE(plant_id, employee_number, timestamp, action)
       )
     `);
+
+    // Migration: widen UNIQUE constraint to include 'action' column for existing DBs
+    try {
+      const tableInfo = mpDb
+        .prepare(
+          "SELECT sql FROM sqlite_master WHERE type='table' AND name='plant_entries'",
+        )
+        .get() as { sql: string } | undefined;
+      if (
+        tableInfo &&
+        tableInfo.sql.includes(
+          'UNIQUE(plant_id, employee_number, timestamp)',
+        ) &&
+        !tableInfo.sql.includes(
+          'UNIQUE(plant_id, employee_number, timestamp, action)',
+        )
+      ) {
+        mpDb.exec(`
+          ALTER TABLE plant_entries RENAME TO _pe_migrate;
+          CREATE TABLE plant_entries (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            plant_id INTEGER NOT NULL,
+            employee_number TEXT NOT NULL,
+            timestamp TEXT NOT NULL,
+            action TEXT NOT NULL,
+            raw_data TEXT,
+            synced_at TIMESTAMP DEFAULT (datetime('now', 'localtime')),
+            created_at TIMESTAMP DEFAULT (datetime('now', 'localtime')),
+            FOREIGN KEY (plant_id) REFERENCES plants(id) ON DELETE CASCADE,
+            UNIQUE(plant_id, employee_number, timestamp, action)
+          );
+          INSERT OR IGNORE INTO plant_entries
+            SELECT * FROM _pe_migrate;
+          DROP TABLE _pe_migrate;
+        `);
+      }
+    } catch (e) {
+      console.warn('Migration warning (plant_entries UNIQUE):', e);
+    }
 
     mpDb.exec(`
       CREATE INDEX IF NOT EXISTS idx_pe_employee ON plant_entries(employee_number);
