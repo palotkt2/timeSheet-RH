@@ -546,6 +546,8 @@ export async function GET(request: NextRequest) {
 
         // Overtime — only count time worked AFTER the shift end (workdays)
         // Early arrivals do NOT count as overtime.
+        // Minimum 5 minutes of overtime required (ignore scan-timing noise).
+        const OT_MIN_HOURS = 5 / 60; // 5 minutes
         let dailyOvertimeHours = 0;
         if (!dailyData[date].isWorkday) {
           // Non-workday: ALL hours are overtime
@@ -569,7 +571,11 @@ export async function GET(request: NextRequest) {
                 (sExit.getTime() - otStart.getTime()) / (1000 * 60 * 60);
             }
           }
+          // Discard sub-5-minute overtime (scan timing noise)
+          if (dailyOvertimeHours < OT_MIN_HOURS) dailyOvertimeHours = 0;
         }
+        // Round per-day FIRST so total = exact sum of displayed per-day values
+        dailyOvertimeHours = Math.round(dailyOvertimeHours * 100) / 100;
         totalOvertimeHours += dailyOvertimeHours;
 
         dailyData[date] = {
