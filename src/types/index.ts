@@ -288,7 +288,7 @@ export interface ScheduleConfig {
 
 // ─── Hook Return Types ────────────────────────────────────────
 
-export type DayStatusCode = 'A' | 'R' | 'F' | 'H' | 'N' | 'E';
+export type DayStatusCode = 'A' | 'A+' | 'R' | 'F' | 'H' | 'N' | 'E';
 
 export interface SyncStatus {
   type: 'single' | 'all';

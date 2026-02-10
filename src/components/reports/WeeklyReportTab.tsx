@@ -75,6 +75,8 @@ const getStatusColor = (status: DayStatusCode): Record<string, string> => {
   switch (status) {
     case 'A':
       return { bgcolor: '#22c55e', color: 'white' };
+    case 'A+':
+      return { bgcolor: '#16a34a', color: 'white' };
     case 'R':
       return { bgcolor: '#eab308', color: 'white' };
     case 'F':
@@ -92,6 +94,7 @@ const getStatusColor = (status: DayStatusCode): Record<string, string> => {
 
 const STATUS_LEGEND = [
   { code: 'A', label: 'Asistencia', color: '#22c55e' },
+  { code: 'A+', label: 'Asistencia + Hrs Extra', color: '#16a34a' },
   { code: 'R', label: 'Retardo', color: '#eab308' },
   { code: 'F', label: 'Falta', color: '#ef4444' },
   { code: 'H', label: 'Festivo', color: '#3b82f6' },
@@ -243,6 +246,7 @@ export default function WeeklyReportTab() {
     if ((dayData.lateMinutes ?? 0) > 0) return 'R';
     if (dayData.status === 'Sin salida' || dayData.status === 'Incompleto')
       return 'R';
+    if ((dayData.overtimeHours ?? 0) > 0) return 'A+';
     return 'A';
   };
 
@@ -823,8 +827,20 @@ export default function WeeklyReportTab() {
                             <span
                               style={{ fontWeight: 'bold', fontSize: '12px' }}
                             >
-                              {statusCode}
+                              {statusCode === 'A+' ? 'A' : statusCode}
                               {hasMultiPlant ? '*' : ''}
+                              {statusCode === 'A+' && (
+                                <span
+                                  style={{
+                                    display: 'block',
+                                    fontSize: '9px',
+                                    fontWeight: 'normal',
+                                    lineHeight: 1,
+                                  }}
+                                >
+                                  +{dayData?.overtimeHours}h
+                                </span>
+                              )}
                             </span>
                           </Tooltip>
                         </TableCell>
@@ -856,9 +872,26 @@ export default function WeeklyReportTab() {
                           emp.totalOvertimeHours > 0 ? '#dbeafe' : undefined,
                       }}
                     >
-                      {emp.totalOvertimeHours > 0
-                        ? `${emp.totalOvertimeHours}h`
-                        : '-'}
+                      {emp.totalOvertimeHours > 0 ? (
+                        <Tooltip
+                          title={reportData.workdays
+                            .filter(
+                              (d) =>
+                                (emp.dailyData[d.date]?.overtimeHours ?? 0) > 0,
+                            )
+                            .map(
+                              (d) =>
+                                `${d.dayName.slice(0, 3)}: ${emp.dailyData[d.date].overtimeHours}h`,
+                            )
+                            .join(' + ')}
+                        >
+                          <span
+                            style={{ cursor: 'default' }}
+                          >{`${emp.totalOvertimeHours}h`}</span>
+                        </Tooltip>
+                      ) : (
+                        '-'
+                      )}
                     </TableCell>
                     <TableCell
                       sx={{
