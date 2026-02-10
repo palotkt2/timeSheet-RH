@@ -1,9 +1,5 @@
 import { NextResponse } from 'next/server';
-import { existsSync, readdirSync } from 'fs';
-import path from 'path';
-
-const PHOTOS_BASE = path.join(process.cwd(), 'data', 'employee-photos');
-const ALLOWED_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp'];
+import { listEmployeesWithPhotos } from '@/lib/photo-storage';
 
 /**
  * GET /api/employee-photos
@@ -11,28 +7,7 @@ const ALLOWED_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp'];
  */
 export async function GET() {
   try {
-    if (!existsSync(PHOTOS_BASE)) {
-      return NextResponse.json({ success: true, employees: [] });
-    }
-
-    const dirs = readdirSync(PHOTOS_BASE, { withFileTypes: true });
-    const employeesWithPhotos: string[] = [];
-
-    for (const dir of dirs) {
-      if (!dir.isDirectory()) continue;
-      const empDir = path.join(PHOTOS_BASE, dir.name);
-      try {
-        const files = readdirSync(empDir);
-        const hasPhoto = files.some((f) =>
-          ALLOWED_EXTENSIONS.includes(path.extname(f).toLowerCase()),
-        );
-        if (hasPhoto) {
-          employeesWithPhotos.push(dir.name);
-        }
-      } catch {
-        // skip unreadable dirs
-      }
-    }
+    const employeesWithPhotos = listEmployeesWithPhotos();
 
     return NextResponse.json({
       success: true,

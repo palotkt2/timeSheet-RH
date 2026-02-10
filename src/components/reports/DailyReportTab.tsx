@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   Box,
   Typography,
@@ -20,9 +20,9 @@ import {
   CircularProgress,
   Avatar,
   Tooltip,
-  IconButton,
+  Dialog,
 } from '@mui/material';
-import { Download, Users, Clock, Factory, Camera } from 'lucide-react';
+import { Download, Users, Clock, Factory } from 'lucide-react';
 import type { DailyEmployee, DailyReportResponse } from '@/types';
 import { formatLocalTimeShort } from '@/utils/dateUtils';
 
@@ -37,16 +37,11 @@ export default function DailyReportTab() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Photo management
+  // Photo management — photos come from sync, keyed by employee+date
   const [photosAvailable, setPhotosAvailable] = useState<Set<string>>(
     new Set(),
   );
-  const [photoTimestamps, setPhotoTimestamps] = useState<
-    Record<string, number>
-  >({});
-  const [uploadingPhoto, setUploadingPhoto] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const uploadTargetRef = useRef<string | null>(null);
+  const [previewPhoto, setPreviewPhoto] = useState<string | null>(null);
 
   // Load which employees have photos
   const loadPhotoIndex = useCallback(async () => {
@@ -65,41 +60,8 @@ export default function DailyReportTab() {
     loadPhotoIndex();
   }, [loadPhotoIndex]);
 
-  const handlePhotoClick = (empNum: string) => {
-    uploadTargetRef.current = empNum;
-    fileInputRef.current?.click();
-  };
-
-  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    const empNum = uploadTargetRef.current;
-    if (!file || !empNum) return;
-
-    setUploadingPhoto(empNum);
-    try {
-      const formData = new FormData();
-      formData.append('photo', file);
-      const res = await fetch(`/api/employee-photos/${empNum}`, {
-        method: 'POST',
-        body: formData,
-      });
-      const data = await res.json();
-      if (data.success) {
-        setPhotosAvailable((prev) => new Set(prev).add(empNum));
-        setPhotoTimestamps((prev) => ({ ...prev, [empNum]: Date.now() }));
-      }
-    } catch {
-      // silently ignore
-    } finally {
-      setUploadingPhoto(null);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-    }
-  };
-
-  const getPhotoUrl = (empNum: string) => {
-    const ts = photoTimestamps[empNum] || '';
-    return `/api/employee-photos/${empNum}${ts ? `?t=${ts}` : ''}`;
-  };
+  const getPhotoUrl = (empNum: string, type: 'entry' | 'exit') =>
+    `/api/employee-photos/${empNum}?date=${selectedDate}&type=${type}`;
 
   const generateReport = async () => {
     setIsLoading(true);
@@ -408,14 +370,21 @@ export default function DailyReportTab() {
             </Card>
           </Box>
 
-          {/* Hidden file input for photo upload */}
-          <input
-            type="file"
-            ref={fileInputRef}
-            accept="image/jpeg,image/png,image/webp"
-            style={{ display: 'none' }}
-            onChange={handlePhotoUpload}
-          />
+          {/* Photo preview dialog */}
+          <Dialog
+            open={!!previewPhoto}
+            onClose={() => setPreviewPhoto(null)}
+            maxWidth="sm"
+          >
+            {previewPhoto && (
+              <Box
+                component="img"
+                src={previewPhoto}
+                alt="Foto empleado"
+                sx={{ maxWidth: '100%', maxHeight: '80vh', display: 'block' }}
+              />
+            )}
+          </Dialog>
 
           {/* Detailed Table */}
           <TableContainer
@@ -437,11 +406,24 @@ export default function DailyReportTab() {
                       color: '#374151',
                       borderBottom: '2px solid #e5e7eb',
                       textAlign: 'center',
-                      width: 56,
+                      width: 52,
                       p: 0.5,
                     }}
                   >
-                    Foto
+                    Entrada
+                  </TableCell>
+                  <TableCell
+                    sx={{
+                      fontWeight: 600,
+                      bgcolor: '#f8f9fb',
+                      color: '#374151',
+                      borderBottom: '2px solid #e5e7eb',
+                      textAlign: 'center',
+                      width: 52,
+                      p: 0.5,
+                    }}
+                  >
+                    Salida
                   </TableCell>
                   <TableCell
                     sx={{
@@ -535,42 +517,74 @@ export default function DailyReportTab() {
               <TableBody>
                 {reportData.employees.map((emp: DailyEmployee) => (
                   <TableRow key={emp.employeeNumber} hover>
-                    <TableCell sx={{ textAlign: 'center', p: 0.5, width: 56 }}>
-                      <Tooltip
-                        title={
-                          uploadingPhoto === emp.employeeNumber
-                            ? 'Subiendo...'
-                            : 'Clic para subir foto'
-                        }
-                      >
-                        <IconButton
-                          size="small"
-                          onClick={() => handlePhotoClick(emp.employeeNumber)}
-                          disabled={uploadingPhoto === emp.employeeNumber}
-                          sx={{ p: 0 }}
+                    {/* Entry photo */}
+                    <TableCell sx={{ textAlign: 'center', p: 0.5, width: 52 }}>
+                      {photosAvailable.has(emp.employeeNumber) ? (
+                        <Tooltip title="Foto de entrada — clic para ampliar">
+                          <Avatar
+                            src={getPhotoUrl(emp.employeeNumber, 'entry')}
+                            alt={`${emp.employeeName} entrada`}
+                            sx={{
+                              width: 40,
+                              height: 40,
+                              cursor: 'pointer',
+                              border: '2px solid #22c55e',
+                            }}
+                            onClick={() =>
+                              setPreviewPhoto(
+                                getPhotoUrl(emp.employeeNumber, 'entry'),
+                              )
+                            }
+                          />
+                        </Tooltip>
+                      ) : (
+                        <Avatar
+                          sx={{
+                            width: 40,
+                            height: 40,
+                            bgcolor: '#f3f4f6',
+                            color: '#d1d5db',
+                            fontSize: 11,
+                          }}
                         >
-                          {uploadingPhoto === emp.employeeNumber ? (
-                            <CircularProgress size={36} />
-                          ) : photosAvailable.has(emp.employeeNumber) ? (
-                            <Avatar
-                              src={getPhotoUrl(emp.employeeNumber)}
-                              alt={emp.employeeName}
-                              sx={{ width: 40, height: 40 }}
-                            />
-                          ) : (
-                            <Avatar
-                              sx={{
-                                width: 40,
-                                height: 40,
-                                bgcolor: '#e5e7eb',
-                                color: '#9ca3af',
-                              }}
-                            >
-                              <Camera size={18} />
-                            </Avatar>
-                          )}
-                        </IconButton>
-                      </Tooltip>
+                          —
+                        </Avatar>
+                      )}
+                    </TableCell>
+                    {/* Exit photo */}
+                    <TableCell sx={{ textAlign: 'center', p: 0.5, width: 52 }}>
+                      {photosAvailable.has(emp.employeeNumber) &&
+                      emp.lastExit ? (
+                        <Tooltip title="Foto de salida — clic para ampliar">
+                          <Avatar
+                            src={getPhotoUrl(emp.employeeNumber, 'exit')}
+                            alt={`${emp.employeeName} salida`}
+                            sx={{
+                              width: 40,
+                              height: 40,
+                              cursor: 'pointer',
+                              border: '2px solid #ef4444',
+                            }}
+                            onClick={() =>
+                              setPreviewPhoto(
+                                getPhotoUrl(emp.employeeNumber, 'exit'),
+                              )
+                            }
+                          />
+                        </Tooltip>
+                      ) : (
+                        <Avatar
+                          sx={{
+                            width: 40,
+                            height: 40,
+                            bgcolor: '#f3f4f6',
+                            color: '#d1d5db',
+                            fontSize: 11,
+                          }}
+                        >
+                          —
+                        </Avatar>
+                      )}
                     </TableCell>
                     <TableCell>
                       <Typography variant="body2" fontWeight="medium">

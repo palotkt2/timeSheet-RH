@@ -1,6 +1,7 @@
 import { NextResponse, NextRequest } from 'next/server';
 import { getMultiPlantDB } from '@/lib/multi-plant-db';
 import { createAdapter } from '@/services/checadorAdapters/adapterFactory';
+import { saveEntryPhoto } from '@/lib/photo-storage';
 import type { Plant } from '@/types';
 
 type RouteContext = { params: Promise<{ id: string }> };
@@ -51,6 +52,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     `);
 
     let inserted = 0;
+    let photosSaved = 0;
     const insertMany = db.transaction((items: typeof entries) => {
       for (const entry of items) {
         const result = insertStmt.run(
@@ -60,7 +62,23 @@ export async function POST(request: NextRequest, context: RouteContext) {
           entry.action,
           entry.raw ? JSON.stringify(entry.raw) : null,
         );
-        if (result.changes > 0) inserted++;
+        if (result.changes > 0) {
+          inserted++;
+          // Save photo to disk if present (only for new entries)
+          if (entry.photo) {
+            try {
+              saveEntryPhoto(
+                entry.employee_number,
+                entry.timestamp,
+                entry.action,
+                entry.photo,
+              );
+              photosSaved++;
+            } catch {
+              // Non-critical: don't fail sync if photo save fails
+            }
+          }
+        }
       }
     });
     insertMany(entries);
@@ -121,6 +139,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
         inserted,
         duplicates: entries.length - inserted,
         namesUpdated,
+        photosSaved,
       },
     });
   } catch (error: unknown) {

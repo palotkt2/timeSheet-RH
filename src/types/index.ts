@@ -84,6 +84,8 @@ export interface AdapterEntry {
   timestamp: string;
   action: string;
   raw: Record<string, unknown>;
+  /** Base64 photo data (extracted separately to avoid storing in DB) */
+  photo?: string;
 }
 
 export interface ConnectionTestResult {

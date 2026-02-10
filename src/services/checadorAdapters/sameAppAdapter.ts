@@ -44,11 +44,20 @@ export class SameAppAdapter extends BaseAdapter {
       }
 
       for (const entry of records) {
+        // Extract photo separately so it's not stored in raw_data JSON
+        const rawEntry = { ...(entry as Record<string, unknown>) };
+        const photo =
+          typeof rawEntry.photo === 'string'
+            ? (rawEntry.photo as string)
+            : undefined;
+        delete rawEntry.photo;
+
         entries.push({
           employee_number: String(entry.barcode),
           timestamp: entry.timestamp,
           action: entry.action || 'Entrada',
-          raw: entry as unknown as Record<string, unknown>,
+          raw: rawEntry,
+          photo,
         });
       }
 

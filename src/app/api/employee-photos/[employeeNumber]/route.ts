@@ -1,44 +1,7 @@
 import { NextResponse, NextRequest } from 'next/server';
-import {
-  readFileSync,
-  writeFileSync,
-  mkdirSync,
-  existsSync,
-  readdirSync,
-} from 'fs';
+import { readFileSync } from 'fs';
 import path from 'path';
-
-const PHOTOS_BASE = path.join(process.cwd(), 'data', 'employee-photos');
-const ALLOWED_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp'];
-const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MB
-
-/**
- * Find the photo file for an employee (checks multiple extensions).
- */
-function findPhotoPath(employeeNumber: string): string | null {
-  const empDir = path.join(PHOTOS_BASE, employeeNumber);
-  if (!existsSync(empDir)) return null;
-
-  for (const ext of ALLOWED_EXTENSIONS) {
-    const filePath = path.join(empDir, `foto${ext}`);
-    if (existsSync(filePath)) return filePath;
-  }
-
-  // Also check for any image file in the folder
-  try {
-    const files = readdirSync(empDir);
-    for (const file of files) {
-      const ext = path.extname(file).toLowerCase();
-      if (ALLOWED_EXTENSIONS.includes(ext)) {
-        return path.join(empDir, file);
-      }
-    }
-  } catch {
-    // ignore
-  }
-
-  return null;
-}
+import { findLatestPhoto, findPhotosForDate } from '@/lib/photo-storage';
 
 const CONTENT_TYPES: Record<string, string> = {
   '.jpg': 'image/jpeg',
@@ -49,14 +12,32 @@ const CONTENT_TYPES: Record<string, string> = {
 
 /**
  * GET /api/employee-photos/[employeeNumber]
- * Returns the employee photo or 404 if not found.
+ * Query params:
+ *   ?date=YYYY-MM-DD — specific date
+ *   ?type=entry|exit  — entry or exit photo (default: entry)
+ * Without date param, returns the latest photo for the employee.
  */
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ employeeNumber: string }> },
 ) {
   const { employeeNumber } = await params;
-  const photoPath = findPhotoPath(employeeNumber);
+  const { searchParams } = new URL(request.url);
+  const date = searchParams.get('date');
+  const type = searchParams.get('type') || 'entry';
+
+  let photoPath: string | null = null;
+
+  if (date) {
+    const photos = findPhotosForDate(employeeNumber, date);
+    photoPath = type === 'exit' ? photos.exit : photos.entry;
+    // Fallback: if requested exit not found, try entry (and vice versa)
+    if (!photoPath) {
+      photoPath = type === 'exit' ? photos.entry : photos.exit;
+    }
+  } else {
+    photoPath = findLatestPhoto(employeeNumber);
+  }
 
   if (!photoPath) {
     return new NextResponse(null, { status: 404 });
@@ -65,13 +46,13 @@ export async function GET(
   try {
     const buffer = readFileSync(photoPath);
     const ext = path.extname(photoPath).toLowerCase();
-    const contentType = CONTENT_TYPES[ext] || 'application/octet-stream';
+    const contentType = CONTENT_TYPES[ext] || 'image/jpeg';
 
     return new NextResponse(buffer, {
       status: 200,
       headers: {
         'Content-Type': contentType,
-        'Cache-Control': 'public, max-age=3600',
+        'Cache-Control': 'public, max-age=300',
       },
     });
   } catch {
@@ -80,98 +61,15 @@ export async function GET(
 }
 
 /**
- * POST /api/employee-photos/[employeeNumber]
- * Upload a photo for an employee. Expects multipart/form-data with a "photo" field.
- * Saves to: data/employee-photos/{employeeNumber}/foto.{ext}
- */
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ employeeNumber: string }> },
-) {
-  const { employeeNumber } = await params;
-
-  try {
-    const formData = await request.formData();
-    const file = formData.get('photo') as File | null;
-
-    if (!file) {
-      return NextResponse.json(
-        { success: false, error: 'No se envió ninguna foto' },
-        { status: 400 },
-      );
-    }
-
-    // Validate file type
-    const ext = path.extname(file.name).toLowerCase();
-    if (!ALLOWED_EXTENSIONS.includes(ext)) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: `Tipo de archivo no permitido. Usar: ${ALLOWED_EXTENSIONS.join(', ')}`,
-        },
-        { status: 400 },
-      );
-    }
-
-    // Validate file size
-    if (file.size > MAX_FILE_SIZE) {
-      return NextResponse.json(
-        { success: false, error: 'El archivo excede 5 MB' },
-        { status: 400 },
-      );
-    }
-
-    // Create directory: data/employee-photos/{employeeNumber}/
-    const empDir = path.join(PHOTOS_BASE, employeeNumber);
-    mkdirSync(empDir, { recursive: true });
-
-    // Remove any existing photo files
-    if (existsSync(empDir)) {
-      try {
-        const files = readdirSync(empDir);
-        for (const f of files) {
-          const fExt = path.extname(f).toLowerCase();
-          if (ALLOWED_EXTENSIONS.includes(fExt)) {
-            const { unlinkSync } = await import('fs');
-            unlinkSync(path.join(empDir, f));
-          }
-        }
-      } catch {
-        // ignore cleanup errors
-      }
-    }
-
-    // Save the new photo
-    const arrayBuffer = await file.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-    const savePath = path.join(empDir, `foto${ext}`);
-    writeFileSync(savePath, buffer);
-
-    return NextResponse.json({
-      success: true,
-      message: `Foto guardada para empleado ${employeeNumber}`,
-      path: `data/employee-photos/${employeeNumber}/foto${ext}`,
-    });
-  } catch (error: unknown) {
-    const message =
-      error instanceof Error ? error.message : 'Error desconocido';
-    return NextResponse.json(
-      { success: false, error: `Error al guardar foto: ${message}` },
-      { status: 500 },
-    );
-  }
-}
-
-/**
  * DELETE /api/employee-photos/[employeeNumber]
- * Delete the photo for an employee.
+ * Delete the latest photo for an employee.
  */
 export async function DELETE(
   _request: NextRequest,
   { params }: { params: Promise<{ employeeNumber: string }> },
 ) {
   const { employeeNumber } = await params;
-  const photoPath = findPhotoPath(employeeNumber);
+  const photoPath = findLatestPhoto(employeeNumber);
 
   if (!photoPath) {
     return NextResponse.json(
