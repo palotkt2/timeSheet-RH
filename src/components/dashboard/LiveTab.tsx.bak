@@ -1,0 +1,316 @@
+'use client';
+
+import React, { useState, useEffect } from 'react';
+import {
+  Box,
+  Typography,
+  Paper,
+  Button,
+  Table,
+  TableHead,
+  TableBody,
+  TableRow,
+  TableCell,
+  TableContainer,
+  Chip,
+  Card,
+  CardContent,
+  CircularProgress,
+} from '@mui/material';
+import { RotateCw, Clock, User, Factory } from 'lucide-react';
+import type { LiveDataResponse } from '@/types';
+
+interface LiveTabProps {
+  liveData: LiveDataResponse | null;
+  isLoading: boolean;
+  onRefresh: () => void;
+  startAutoRefresh: (interval: number) => void;
+  stopAutoRefresh: () => void;
+}
+
+export default function LiveTab({
+  liveData,
+  isLoading,
+  onRefresh,
+  startAutoRefresh,
+  stopAutoRefresh,
+}: LiveTabProps) {
+  const [autoRefresh, setAutoRefresh] = useState(false);
+
+  useEffect(() => {
+    onRefresh();
+  }, [onRefresh]);
+
+  const toggleAutoRefresh = () => {
+    if (autoRefresh) {
+      stopAutoRefresh();
+      setAutoRefresh(false);
+    } else {
+      startAutoRefresh(30000);
+      setAutoRefresh(true);
+    }
+  };
+
+  return (
+    <Box>
+      <Box
+        sx={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          mb: 2,
+        }}
+      >
+        <Typography variant="h6">Empleados en Tiempo Real</Typography>
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          <Button
+            size="small"
+            variant={autoRefresh ? 'contained' : 'outlined'}
+            onClick={toggleAutoRefresh}
+            startIcon={<Clock size={18} />}
+            sx={
+              autoRefresh
+                ? { bgcolor: '#16a34a', '&:hover': { bgcolor: '#15803d' } }
+                : {}
+            }
+          >
+            {autoRefresh ? 'Auto-Refresh ON' : 'Auto-Refresh OFF'}
+          </Button>
+          <Button
+            size="small"
+            variant="outlined"
+            onClick={onRefresh}
+            disabled={isLoading}
+            startIcon={
+              isLoading ? (
+                <CircularProgress size={16} />
+              ) : (
+                <RotateCw size={18} />
+              )
+            }
+          >
+            Actualizar
+          </Button>
+        </Box>
+      </Box>
+
+      {!liveData ? (
+        <Box sx={{ textAlign: 'center', py: 4 }}>
+          <CircularProgress />
+        </Box>
+      ) : (
+        <>
+          {/* Summary cards */}
+          <Box
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+              gap: 2,
+              mb: 3,
+            }}
+          >
+            <Card sx={{ bgcolor: '#f0fdf4', borderLeft: '4px solid #22c55e' }}>
+              <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
+                <Typography variant="caption" color="text.secondary">
+                  Activos Ahora
+                </Typography>
+                <Typography variant="h4" fontWeight="bold" color="#16a34a">
+                  {liveData.summary.currentlyActive}
+                </Typography>
+              </CardContent>
+            </Card>
+            <Card sx={{ bgcolor: '#eff6ff', borderLeft: '4px solid #3b82f6' }}>
+              <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
+                <Typography variant="caption" color="text.secondary">
+                  Completaron Turno
+                </Typography>
+                <Typography variant="h4" fontWeight="bold" color="#2563eb">
+                  {liveData.summary.completed}
+                </Typography>
+              </CardContent>
+            </Card>
+            <Card sx={{ bgcolor: '#f0f7ff', borderLeft: '4px solid #1e40af' }}>
+              <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
+                <Typography variant="caption" color="text.secondary">
+                  Total Hoy
+                </Typography>
+                <Typography variant="h4" fontWeight="bold" color="#1e40af">
+                  {liveData.summary.totalEmployeesToday}
+                </Typography>
+              </CardContent>
+            </Card>
+          </Box>
+
+          {/* Plant summary */}
+          {liveData.plantSummary && liveData.plantSummary.length > 0 && (
+            <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap' }}>
+              {liveData.plantSummary.map((ps) => (
+                <Chip
+                  key={ps.id}
+                  icon={<Factory size={18} />}
+                  label={`${ps.name}: ${ps.employees_today} empleados`}
+                  variant="outlined"
+                  color="primary"
+                />
+              ))}
+            </Box>
+          )}
+
+          {/* Active employees table */}
+          {liveData.activeEmployees && liveData.activeEmployees.length > 0 && (
+            <>
+              <Typography
+                variant="subtitle1"
+                sx={{ mb: 1, color: '#16a34a', fontWeight: 'bold' }}
+              >
+                Activos ({liveData.activeEmployees.length})
+              </Typography>
+              <TableContainer component={Paper} sx={{ mb: 3 }}>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow sx={{ bgcolor: '#f0fdf4' }}>
+                      <TableCell sx={{ fontWeight: 'bold' }}>
+                        Empleado
+                      </TableCell>
+                      <TableCell sx={{ fontWeight: 'bold' }}>Nombre</TableCell>
+                      <TableCell sx={{ fontWeight: 'bold' }}>
+                        Última Acción
+                      </TableCell>
+                      <TableCell sx={{ fontWeight: 'bold' }}>Hora</TableCell>
+                      <TableCell sx={{ fontWeight: 'bold' }}>Planta</TableCell>
+                      <TableCell sx={{ fontWeight: 'bold' }}>
+                        Plantas Hoy
+                      </TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {liveData.activeEmployees.map((emp) => (
+                      <TableRow key={emp.employeeNumber} hover>
+                        <TableCell>{emp.employeeNumber}</TableCell>
+                        <TableCell>
+                          <strong>{emp.employeeName}</strong>
+                        </TableCell>
+                        <TableCell>
+                          <Chip
+                            label={emp.lastAction}
+                            size="small"
+                            color={
+                              emp.lastAction === 'Entrada'
+                                ? 'success'
+                                : 'warning'
+                            }
+                          />
+                        </TableCell>
+                        <TableCell>
+                          {new Date(emp.lastTimestamp).toLocaleTimeString()}
+                        </TableCell>
+                        <TableCell>
+                          <Chip
+                            label={emp.lastPlant}
+                            size="small"
+                            icon={<Factory size={18} />}
+                            variant="outlined"
+                          />
+                        </TableCell>
+                        <TableCell>
+                          {emp.plantsToday.map((p) => (
+                            <Chip
+                              key={p}
+                              label={p}
+                              size="small"
+                              sx={{ mr: 0.5 }}
+                              variant="outlined"
+                            />
+                          ))}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </>
+          )}
+
+          {/* Completed employees */}
+          {liveData.completedEmployees &&
+            liveData.completedEmployees.length > 0 && (
+              <>
+                <Typography
+                  variant="subtitle1"
+                  sx={{ mb: 1, color: '#2563eb', fontWeight: 'bold' }}
+                >
+                  Completaron Turno ({liveData.completedEmployees.length})
+                </Typography>
+                <TableContainer component={Paper}>
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow sx={{ bgcolor: '#eff6ff' }}>
+                        <TableCell sx={{ fontWeight: 'bold' }}>
+                          Empleado
+                        </TableCell>
+                        <TableCell sx={{ fontWeight: 'bold' }}>
+                          Nombre
+                        </TableCell>
+                        <TableCell sx={{ fontWeight: 'bold' }}>
+                          Checadas
+                        </TableCell>
+                        <TableCell sx={{ fontWeight: 'bold' }}>
+                          Última Salida
+                        </TableCell>
+                        <TableCell sx={{ fontWeight: 'bold' }}>
+                          Plantas Hoy
+                        </TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {liveData.completedEmployees.map((emp) => (
+                        <TableRow key={emp.employeeNumber} hover>
+                          <TableCell>{emp.employeeNumber}</TableCell>
+                          <TableCell>{emp.employeeName}</TableCell>
+                          <TableCell>
+                            {emp.totalEntries}E / {emp.totalExits}S
+                          </TableCell>
+                          <TableCell>
+                            {new Date(emp.lastTimestamp).toLocaleTimeString()}
+                          </TableCell>
+                          <TableCell>
+                            {emp.plantsToday.map((p) => (
+                              <Chip
+                                key={p}
+                                label={p}
+                                size="small"
+                                sx={{ mr: 0.5 }}
+                                variant="outlined"
+                              />
+                            ))}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </>
+            )}
+
+          {liveData.summary.totalEmployeesToday === 0 && (
+            <Paper sx={{ p: 4, textAlign: 'center' }}>
+              <User size={20} />
+              <Typography color="text.secondary">
+                No hay registros de hoy en las plantas sincronizadas
+              </Typography>
+            </Paper>
+          )}
+
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            sx={{ mt: 2, display: 'block' }}
+          >
+            Última actualización:{' '}
+            {new Date(liveData.timestamp).toLocaleString()}
+          </Typography>
+        </>
+      )}
+    </Box>
+  );
+}
