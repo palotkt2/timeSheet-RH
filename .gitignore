@@ -28,6 +28,9 @@ yarn-error.log*
 *.db-wal
 *.db-shm
 
+# employee photos (local data)
+data/employee-photos/
+
 # IDE
 .vscode/
 .idea/

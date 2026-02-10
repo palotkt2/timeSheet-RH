@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import {
   Box,
   Typography,
@@ -18,8 +18,11 @@ import {
   TableContainer,
   Chip,
   CircularProgress,
+  Avatar,
+  Tooltip,
+  IconButton,
 } from '@mui/material';
-import { Download, Users, Clock, Factory } from 'lucide-react';
+import { Download, Users, Clock, Factory, Camera } from 'lucide-react';
 import type { DailyEmployee, DailyReportResponse } from '@/types';
 import { formatLocalTimeShort } from '@/utils/dateUtils';
 
@@ -33,6 +36,70 @@ export default function DailyReportTab() {
   );
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Photo management
+  const [photosAvailable, setPhotosAvailable] = useState<Set<string>>(
+    new Set(),
+  );
+  const [photoTimestamps, setPhotoTimestamps] = useState<
+    Record<string, number>
+  >({});
+  const [uploadingPhoto, setUploadingPhoto] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const uploadTargetRef = useRef<string | null>(null);
+
+  // Load which employees have photos
+  const loadPhotoIndex = useCallback(async () => {
+    try {
+      const res = await fetch('/api/employee-photos');
+      const data = await res.json();
+      if (data.success && data.employees) {
+        setPhotosAvailable(new Set(data.employees));
+      }
+    } catch {
+      // silently ignore
+    }
+  }, []);
+
+  useEffect(() => {
+    loadPhotoIndex();
+  }, [loadPhotoIndex]);
+
+  const handlePhotoClick = (empNum: string) => {
+    uploadTargetRef.current = empNum;
+    fileInputRef.current?.click();
+  };
+
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    const empNum = uploadTargetRef.current;
+    if (!file || !empNum) return;
+
+    setUploadingPhoto(empNum);
+    try {
+      const formData = new FormData();
+      formData.append('photo', file);
+      const res = await fetch(`/api/employee-photos/${empNum}`, {
+        method: 'POST',
+        body: formData,
+      });
+      const data = await res.json();
+      if (data.success) {
+        setPhotosAvailable((prev) => new Set(prev).add(empNum));
+        setPhotoTimestamps((prev) => ({ ...prev, [empNum]: Date.now() }));
+      }
+    } catch {
+      // silently ignore
+    } finally {
+      setUploadingPhoto(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const getPhotoUrl = (empNum: string) => {
+    const ts = photoTimestamps[empNum] || '';
+    return `/api/employee-photos/${empNum}${ts ? `?t=${ts}` : ''}`;
+  };
 
   const generateReport = async () => {
     setIsLoading(true);
@@ -196,7 +263,8 @@ export default function DailyReportTab() {
             onChange={(e) => setEmployeeNumber(e.target.value)}
             size="small"
             placeholder="Ej: 001"
-            sx={{ width: 160 }}
+            InputLabelProps={{ shrink: true }}
+            sx={{ width: 190 }}
           />
           <Button
             variant="contained"
@@ -340,6 +408,15 @@ export default function DailyReportTab() {
             </Card>
           </Box>
 
+          {/* Hidden file input for photo upload */}
+          <input
+            type="file"
+            ref={fileInputRef}
+            accept="image/jpeg,image/png,image/webp"
+            style={{ display: 'none' }}
+            onChange={handlePhotoUpload}
+          />
+
           {/* Detailed Table */}
           <TableContainer
             component={Paper}
@@ -353,6 +430,19 @@ export default function DailyReportTab() {
             <Table stickyHeader size="small">
               <TableHead>
                 <TableRow>
+                  <TableCell
+                    sx={{
+                      fontWeight: 600,
+                      bgcolor: '#f8f9fb',
+                      color: '#374151',
+                      borderBottom: '2px solid #e5e7eb',
+                      textAlign: 'center',
+                      width: 56,
+                      p: 0.5,
+                    }}
+                  >
+                    Foto
+                  </TableCell>
                   <TableCell
                     sx={{
                       fontWeight: 600,
@@ -445,6 +535,43 @@ export default function DailyReportTab() {
               <TableBody>
                 {reportData.employees.map((emp: DailyEmployee) => (
                   <TableRow key={emp.employeeNumber} hover>
+                    <TableCell sx={{ textAlign: 'center', p: 0.5, width: 56 }}>
+                      <Tooltip
+                        title={
+                          uploadingPhoto === emp.employeeNumber
+                            ? 'Subiendo...'
+                            : 'Clic para subir foto'
+                        }
+                      >
+                        <IconButton
+                          size="small"
+                          onClick={() => handlePhotoClick(emp.employeeNumber)}
+                          disabled={uploadingPhoto === emp.employeeNumber}
+                          sx={{ p: 0 }}
+                        >
+                          {uploadingPhoto === emp.employeeNumber ? (
+                            <CircularProgress size={36} />
+                          ) : photosAvailable.has(emp.employeeNumber) ? (
+                            <Avatar
+                              src={getPhotoUrl(emp.employeeNumber)}
+                              alt={emp.employeeName}
+                              sx={{ width: 40, height: 40 }}
+                            />
+                          ) : (
+                            <Avatar
+                              sx={{
+                                width: 40,
+                                height: 40,
+                                bgcolor: '#e5e7eb',
+                                color: '#9ca3af',
+                              }}
+                            >
+                              <Camera size={18} />
+                            </Avatar>
+                          )}
+                        </IconButton>
+                      </Tooltip>
+                    </TableCell>
                     <TableCell>
                       <Typography variant="body2" fontWeight="medium">
                         {emp.employeeName}
