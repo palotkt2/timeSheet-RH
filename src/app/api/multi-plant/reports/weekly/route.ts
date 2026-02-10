@@ -24,15 +24,18 @@ function calculateDailyHours(
   const sessions: Session[] = [];
   let exitIndex = 0;
 
-  entries.sort((a, b) => a.getTime() - b.getTime());
-  exits.sort((a, b) => a.getTime() - b.getTime());
+  const sortedEntries = [...entries].sort((a, b) => a.getTime() - b.getTime());
+  const sortedExits = [...exits].sort((a, b) => a.getTime() - b.getTime());
 
-  for (let i = 0; i < entries.length; i++) {
-    const entryTime = entries[i];
-    while (exitIndex < exits.length && exits[exitIndex] <= entryTime)
+  for (let i = 0; i < sortedEntries.length; i++) {
+    const entryTime = sortedEntries[i];
+    while (
+      exitIndex < sortedExits.length &&
+      sortedExits[exitIndex] <= entryTime
+    )
       exitIndex++;
-    if (exitIndex < exits.length) {
-      const exitTime = exits[exitIndex];
+    if (exitIndex < sortedExits.length) {
+      const exitTime = sortedExits[exitIndex];
       const hours =
         (exitTime.getTime() - entryTime.getTime()) / (1000 * 60 * 60);
       if (hours >= 0.1 && hours <= 24) {

@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo } from 'react';
-import { formatLocalTimeShort } from '@/utils/dateUtils';
+import { formatLocalTimeShort, formatLocalDate } from '@/utils/dateUtils';
 import { exportWeeklyReportToExcel } from '@/utils/excelExport';
 import type {
   WeeklyReportResponse,
@@ -61,7 +61,10 @@ export function useMultiPlantReports() {
         const minHours = (schedule.min_hours as number) || 8;
         const toleranceMinutes = (schedule.tolerance_minutes as number) || 15;
         if (dayData.firstEntry && schedule.entry_time) {
-          const entryTime = new Date(`2000-01-01T${dayData.firstEntry}`);
+          const timePart = dayData.firstEntry.includes('T')
+            ? dayData.firstEntry.split('T')[1]
+            : dayData.firstEntry;
+          const entryTime = new Date(`2000-01-01T${timePart}`);
           const scheduledEntry = new Date(`2000-01-01T${schedule.entry_time}`);
           const toleranceMs = toleranceMinutes * 60 * 1000;
           if (entryTime.getTime() - scheduledEntry.getTime() > toleranceMs)
@@ -97,7 +100,7 @@ export function useMultiPlantReports() {
         result.setDate(result.getDate() + days);
         return result;
       },
-      formatDate: (date: Date): string => date.toISOString().split('T')[0],
+      formatDate: (date: Date): string => formatLocalDate(date),
       formatTime: (timestamp: string | null): string => {
         if (!timestamp) return '-';
         return formatLocalTimeShort(timestamp);
