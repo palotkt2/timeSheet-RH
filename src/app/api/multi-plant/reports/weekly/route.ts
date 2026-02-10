@@ -218,6 +218,12 @@ export async function GET(request: NextRequest) {
     const mpDb = getMultiPlantDB();
     const mainDb = getDB();
 
+    // Extend query by ±1 day to capture night-shift scans that cross midnight
+    const qStart = createLocalDate(startDate!);
+    qStart.setDate(qStart.getDate() - 1);
+    const qEnd = createLocalDate(endDate!);
+    qEnd.setDate(qEnd.getDate() + 1);
+
     // Fetch punch records from multi-plant DB
     // NO filtrar por action - inferiremos entrada/salida por timing
     let query = `
@@ -227,7 +233,7 @@ export async function GET(request: NextRequest) {
       INNER JOIN plants p ON pe.plant_id = p.id
       WHERE date(pe.timestamp) BETWEEN ? AND ?
     `;
-    const params: string[] = [startDate!, endDate!];
+    const params: string[] = [formatLocalDate(qStart), formatLocalDate(qEnd)];
     if (employeeNumber) {
       query += ` AND pe.employee_number = ?`;
       params.push(employeeNumber);
@@ -355,20 +361,46 @@ export async function GET(request: NextRequest) {
       });
     });
 
-    // Group records by employee → date (collect ALL scans, infer entry/exit later)
+    // Detect night shift employees for cross-midnight date remapping
+    // Night shift = start hour > end hour (e.g., 22:00 > 06:00)
+    const nightShiftBoundary = new Map<string, number>();
+    for (const [empNumber, shift] of employeeShiftMap) {
+      const sh = parseInt(shift.start_time.split(':')[0]);
+      const eh = parseInt(shift.end_time.split(':')[0]);
+      if (sh > eh) {
+        // Boundary = midpoint of off-shift period
+        // e.g., 22:00-06:00 → (22+6)/2 = 14 → scans before 14:00 go to prev day
+        nightShiftBoundary.set(empNumber, Math.floor((sh + eh) / 2));
+      }
+    }
+
+    // Group records by employee → shift day (adjusting for night-shift cross-midnight)
     const employeeData = new Map<string, Map<string, DayRecords>>();
     records.forEach((record) => {
+      let workDate = record.workDate;
+
+      // Night shift: remap early-morning scans to previous day's shift
+      const boundary = nightShiftBoundary.get(record.employeeNumber);
+      if (boundary !== undefined) {
+        const scanHour = new Date(record.timestamp).getHours();
+        if (scanHour < boundary) {
+          const prevDate = createLocalDate(record.workDate);
+          prevDate.setDate(prevDate.getDate() - 1);
+          workDate = formatLocalDate(prevDate);
+        }
+      }
+
       if (!employeeData.has(record.employeeNumber))
         employeeData.set(record.employeeNumber, new Map());
       const dates = employeeData.get(record.employeeNumber)!;
-      if (!dates.has(record.workDate))
-        dates.set(record.workDate, {
+      if (!dates.has(workDate))
+        dates.set(workDate, {
           allScans: [],
           entries: [],
           exits: [],
           plants: new Set(),
         });
-      const day = dates.get(record.workDate)!;
+      const day = dates.get(workDate)!;
       const timestamp = new Date(record.timestamp);
       day.allScans.push(timestamp);
       day.plants.add(record.plant_name);
