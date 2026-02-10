@@ -544,17 +544,30 @@ export async function GET(request: NextRequest) {
           daysLate++;
         }
 
-        // Overtime — compare total hours worked vs scheduled shift duration
+        // Overtime — only count time worked AFTER the shift end (workdays)
+        // Early arrivals do NOT count as overtime.
         let dailyOvertimeHours = 0;
         if (!dailyData[date].isWorkday) {
+          // Non-workday: ALL hours are overtime
           dailyOvertimeHours = dayHours;
-        } else if (dayHours > 0) {
-          const scheduledHours = calculateShiftHours(
-            assignedShift.start_time,
-            assignedShift.end_time,
-          );
-          if (scheduledHours > 0 && dayHours > scheduledHours) {
-            dailyOvertimeHours = dayHours - scheduledHours;
+        } else if (sessions.length > 0) {
+          // Workday: sum the portion of each session that extends past shift end
+          const [seh, sem] = assignedShift.end_time.split(':').map(Number);
+          const shiftEnd = createLocalDate(date);
+          shiftEnd.setHours(seh, sem, 0, 0);
+          // Night shift: shift end falls on the next calendar day
+          const ssh = parseInt(assignedShift.start_time.split(':')[0]);
+          if (ssh > seh) shiftEnd.setDate(shiftEnd.getDate() + 1);
+
+          for (const s of sessions) {
+            const sExit = new Date(s.exit);
+            if (sExit.getTime() > shiftEnd.getTime()) {
+              const sEntry = new Date(s.entry);
+              const otStart =
+                sEntry.getTime() > shiftEnd.getTime() ? sEntry : shiftEnd;
+              dailyOvertimeHours +=
+                (sExit.getTime() - otStart.getTime()) / (1000 * 60 * 60);
+            }
           }
         }
         totalOvertimeHours += dailyOvertimeHours;
