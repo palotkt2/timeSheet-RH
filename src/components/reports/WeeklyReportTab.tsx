@@ -793,7 +793,7 @@ export default function WeeklyReportTab() {
                         whiteSpace: 'nowrap',
                       }}
                     >
-                      <Tooltip title={`${emp.employeeRole} â€” ${emp.shift}`}>
+                      <Tooltip title={`${emp.employeeRole} — ${emp.shift}`}>
                         <span>{emp.employeeName}</span>
                       </Tooltip>
                     </TableCell>
