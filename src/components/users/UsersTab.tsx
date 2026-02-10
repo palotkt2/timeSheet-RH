@@ -61,6 +61,7 @@ function roleChipProps(role: UserRole) {
 interface UserFormData {
   username: string;
   password: string;
+  confirmPassword: string;
   name: string;
   role: UserRole;
 }
@@ -79,6 +80,7 @@ function UserDialog({
   const [form, setForm] = useState<UserFormData>({
     username: '',
     password: '',
+    confirmPassword: '',
     name: '',
     role: 'viewer',
   });
@@ -91,11 +93,18 @@ function UserDialog({
         setForm({
           username: editingUser.username,
           password: '',
+          confirmPassword: '',
           name: editingUser.name,
           role: editingUser.role,
         });
       } else {
-        setForm({ username: '', password: '', name: '', role: 'viewer' });
+        setForm({
+          username: '',
+          password: '',
+          confirmPassword: '',
+          name: '',
+          role: 'viewer',
+        });
       }
       setError('');
     }
@@ -108,6 +117,10 @@ function UserDialog({
     }
     if (!editingUser && !form.password) {
       setError('La contraseña es requerida para nuevos usuarios');
+      return;
+    }
+    if (form.password && form.password !== form.confirmPassword) {
+      setError('Las contraseñas no coinciden');
       return;
     }
     setSaving(true);
@@ -162,6 +175,26 @@ function UserDialog({
           onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
           margin="dense"
         />
+        {(form.password || !editingUser) && (
+          <TextField
+            fullWidth
+            label="Confirmar contraseña"
+            type="password"
+            value={form.confirmPassword}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, confirmPassword: e.target.value }))
+            }
+            margin="dense"
+            error={
+              !!form.confirmPassword && form.password !== form.confirmPassword
+            }
+            helperText={
+              form.confirmPassword && form.password !== form.confirmPassword
+                ? 'Las contraseñas no coinciden'
+                : ''
+            }
+          />
+        )}
         <FormControl fullWidth margin="dense">
           <InputLabel>Rol</InputLabel>
           <Select

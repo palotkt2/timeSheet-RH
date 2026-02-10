@@ -34,7 +34,9 @@ import {
   Download,
   UserCheck,
   RefreshCw,
+  UserPlus,
 } from 'lucide-react';
+import EmployeeRegisterDialog from './EmployeeRegisterDialog';
 
 interface EmployeeName {
   employee_number: string;
@@ -60,6 +62,7 @@ export default function EmployeesTab() {
     text: string;
   } | null>(null);
   const [importOpen, setImportOpen] = useState(false);
+  const [registerOpen, setRegisterOpen] = useState(false);
   const [csvText, setCsvText] = useState('');
   const [isSyncing, setIsSyncing] = useState(false);
   const [page, setPage] = useState(0);
@@ -321,7 +324,23 @@ export default function EmployeesTab() {
             />
           )}
         </Box>
-        <Box sx={{ display: 'flex', gap: 1 }}>
+        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+          <Button
+            variant="contained"
+            size="small"
+            startIcon={<UserPlus size={16} />}
+            onClick={() => setRegisterOpen(true)}
+            sx={{
+              bgcolor: '#16a34a',
+              '&:hover': { bgcolor: '#15803d' },
+              borderRadius: 2,
+              textTransform: 'none',
+              fontWeight: 600,
+              fontSize: '0.8rem',
+            }}
+          >
+            Registrar Empleado
+          </Button>
           <Button
             variant="contained"
             size="small"
@@ -760,6 +779,19 @@ export default function EmployeesTab() {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Register Employee Dialog */}
+      <EmployeeRegisterDialog
+        open={registerOpen}
+        onClose={() => setRegisterOpen(false)}
+        onSuccess={() => {
+          loadEmployees();
+          setAlert({
+            type: 'success',
+            text: 'Empleado registrado exitosamente',
+          });
+        }}
+      />
     </Box>
   );
 }

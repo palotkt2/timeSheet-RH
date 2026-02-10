@@ -233,6 +233,76 @@ export class SameAppAdapter extends BaseAdapter {
     }
   }
 
+  /**
+   * Register an employee on the remote plant.
+   * POST /api/employee-shifts → { employee_number, employee_name, employee_role, department, date }
+   */
+  async registerEmployee(employee: {
+    employee_number: string;
+    employee_name: string;
+    employee_role: string;
+    department: string;
+    date: string;
+  }): Promise<{ success: boolean; remoteId?: number; message?: string }> {
+    try {
+      const data = (await this._fetch(`${this.baseUrl}/employee-shifts`, {
+        method: 'POST',
+        body: JSON.stringify(employee),
+      })) as {
+        success?: boolean;
+        shift?: { id: number };
+        message?: string;
+        error?: string;
+      };
+
+      if (data.success) {
+        return {
+          success: true,
+          remoteId: data.shift?.id,
+          message: data.message,
+        };
+      }
+      return {
+        success: false,
+        message: data.error || data.message || 'Error desconocido',
+      };
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Error de conexión';
+      return { success: false, message: msg };
+    }
+  }
+
+  /**
+   * Assign a shift to an employee on the remote plant.
+   * POST /api/storage/shift-assignments → { employee_id, shift_id, start_date, active }
+   */
+  async assignShift(assignment: {
+    employee_id: string;
+    shift_id: number;
+    start_date: string;
+  }): Promise<{ success: boolean; message?: string }> {
+    try {
+      const data = (await this._fetch(
+        `${this.baseUrl}/storage/shift-assignments`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ ...assignment, active: 1 }),
+        },
+      )) as { success?: boolean; message?: string; error?: string };
+
+      if (data.success) {
+        return { success: true, message: data.message };
+      }
+      return {
+        success: false,
+        message: data.error || data.message || 'Error desconocido',
+      };
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Error de conexión';
+      return { success: false, message: msg };
+    }
+  }
+
   async testConnection(): Promise<ConnectionTestResult> {
     try {
       const controller = new AbortController();
