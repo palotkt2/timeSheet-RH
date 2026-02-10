@@ -73,7 +73,6 @@ export default function MultiPlantDashboard({
     syncPlant,
     syncAll,
     syncStatus,
-    clearSyncStatus,
   } = useMultiPlant();
 
   const {
@@ -155,7 +154,6 @@ export default function MultiPlantDashboard({
             syncStatus={syncStatus}
             onSyncPlant={syncPlant}
             onSyncAll={syncAll}
-            clearSyncStatus={clearSyncStatus}
           />
         );
       case 'live':

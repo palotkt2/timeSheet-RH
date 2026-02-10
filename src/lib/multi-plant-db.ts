@@ -58,6 +58,7 @@ export function getMultiPlantDB(): Database.Database {
       CREATE INDEX IF NOT EXISTS idx_pe_timestamp ON plant_entries(timestamp);
       CREATE INDEX IF NOT EXISTS idx_pe_plant ON plant_entries(plant_id);
       CREATE INDEX IF NOT EXISTS idx_pe_emp_ts ON plant_entries(employee_number, timestamp);
+      CREATE INDEX IF NOT EXISTS idx_pe_date ON plant_entries(date(timestamp));
     `);
 
     mpDb.exec(`

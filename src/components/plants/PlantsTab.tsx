@@ -34,7 +34,6 @@ interface PlantsTabProps {
   onEdit: (plant: Plant) => void;
   onDelete: (plant: Plant) => void;
   onTest: (plantId: number) => Promise<ConnectionTestResult>;
-  onSync?: (plantId: number) => void;
 }
 
 export default function PlantsTab({

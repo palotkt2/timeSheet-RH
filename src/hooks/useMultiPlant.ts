@@ -178,8 +178,6 @@ export function useMultiPlant() {
     [loadPlants],
   );
 
-  const clearSyncStatus = useCallback(() => setSyncStatus(null), []);
-
   return {
     plants,
     isLoading,
@@ -192,6 +190,5 @@ export function useMultiPlant() {
     testConnection,
     syncPlant,
     syncAll,
-    clearSyncStatus,
   };
 }

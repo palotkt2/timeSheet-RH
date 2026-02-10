@@ -1,20 +1,13 @@
 import { NextResponse, NextRequest } from 'next/server';
 import { getMultiPlantDB } from '@/lib/multi-plant-db';
 import { getDB, initDB } from '@/lib/db';
+import {
+  formatLocalDate,
+  formatLocalDateTime,
+  createLocalDate,
+} from '@/utils/dateUtils';
 
 // ── Helpers ──
-
-function formatLocalDate(date: Date): string {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-}
-
-function formatLocalDateTime(date: Date): string {
-  return `${formatLocalDate(date)}T${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}:${String(date.getSeconds()).padStart(2, '0')}`;
-}
-
-function createLocalDate(dateString: string): Date {
-  return new Date(dateString + 'T00:00:00');
-}
 
 interface Session {
   entry: string;
@@ -107,6 +100,8 @@ function validateParams(
 ): string[] {
   const errors: string[] = [];
   if (!startDate) errors.push('startDate es requerido');
+  if (startDate && isNaN(Date.parse(startDate)))
+    errors.push('startDate inválido');
   if (endDate && isNaN(Date.parse(endDate))) errors.push('endDate inválido');
   if (startDate && endDate && new Date(endDate) < new Date(startDate))
     errors.push('La fecha de fin no puede ser anterior a la de inicio');

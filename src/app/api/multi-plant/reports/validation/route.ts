@@ -1,6 +1,7 @@
 import { NextResponse, NextRequest } from 'next/server';
 import { getMultiPlantDB } from '@/lib/multi-plant-db';
 import { getDB, initDB } from '@/lib/db';
+import { formatLocalDate } from '@/utils/dateUtils';
 
 interface EmployeeInfo {
   employee_number: string;
@@ -14,10 +15,6 @@ interface PunchEntry {
   timestamp: string;
   action: string;
   plant_name: string;
-}
-
-function formatLocalDate(date: Date): string {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
 /**

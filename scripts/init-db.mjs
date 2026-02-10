@@ -26,7 +26,7 @@ mainDb.exec(`
     employee_role TEXT,
     department TEXT,
     shift_type TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT (datetime('now','localtime'))
   );
 
   CREATE TABLE IF NOT EXISTS shifts (
@@ -37,8 +37,8 @@ mainDb.exec(`
     tolerance_minutes INTEGER DEFAULT 15,
     days TEXT DEFAULT '[1,2,3,4,5]',
     is_active INTEGER DEFAULT 1,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT (datetime('now','localtime')),
+    updated_at TIMESTAMP DEFAULT (datetime('now','localtime'))
   );
 
   CREATE TABLE IF NOT EXISTS shift_assignments (
@@ -48,7 +48,7 @@ mainDb.exec(`
     start_date TEXT NOT NULL,
     end_date TEXT,
     active INTEGER DEFAULT 1,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP DEFAULT (datetime('now','localtime')),
     FOREIGN KEY (shift_id) REFERENCES shifts(id) ON DELETE CASCADE
   );
 
@@ -57,7 +57,7 @@ mainDb.exec(`
     barcode TEXT NOT NULL,
     timestamp TEXT NOT NULL,
     action TEXT NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP DEFAULT (datetime('now','localtime')),
     UNIQUE(barcode, timestamp)
   );
 
@@ -86,7 +86,9 @@ if (shiftCount.count === 0) {
 
 mainDb.close();
 console.log(`  ✔ barcode_entries.db ${existed1 ? '(ya existía)' : 'creada'}`);
-console.log('    Tablas: employee_shifts, shifts, shift_assignments, barcode_entries\n');
+console.log(
+  '    Tablas: employee_shifts, shifts, shift_assignments, barcode_entries\n',
+);
 
 // ─── 2. multi_plant.db ───────────────────────────────────────────────
 const existed2 = existsSync('./multi_plant.db');
@@ -106,8 +108,8 @@ mpDb.exec(`
     field_mapping TEXT,
     is_active INTEGER DEFAULT 1,
     last_sync TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT (datetime('now','localtime')),
+    updated_at TIMESTAMP DEFAULT (datetime('now','localtime'))
   );
 
   CREATE TABLE IF NOT EXISTS plant_entries (
@@ -117,8 +119,8 @@ mpDb.exec(`
     timestamp TEXT NOT NULL,
     action TEXT NOT NULL,
     raw_data TEXT,
-    synced_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    synced_at TIMESTAMP DEFAULT (datetime('now','localtime')),
+    created_at TIMESTAMP DEFAULT (datetime('now','localtime')),
     FOREIGN KEY (plant_id) REFERENCES plants(id) ON DELETE CASCADE,
     UNIQUE(plant_id, employee_number, timestamp)
   );
@@ -127,6 +129,7 @@ mpDb.exec(`
   CREATE INDEX IF NOT EXISTS idx_pe_timestamp ON plant_entries(timestamp);
   CREATE INDEX IF NOT EXISTS idx_pe_plant ON plant_entries(plant_id);
   CREATE INDEX IF NOT EXISTS idx_pe_emp_ts ON plant_entries(employee_number, timestamp);
+  CREATE INDEX IF NOT EXISTS idx_pe_date ON plant_entries(date(timestamp));
 `);
 
 mpDb.close();

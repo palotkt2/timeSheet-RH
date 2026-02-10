@@ -20,28 +20,6 @@ export function useMultiPlantReports() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const loadScheduleConfig =
-    useCallback(async (): Promise<ScheduleConfig | null> => {
-      try {
-        const [schedulesRes, holidaysRes] = await Promise.all([
-          fetch('/api/storage/schedules'),
-          fetch('/api/storage/holidays'),
-        ]);
-        const schedulesData = await schedulesRes.json();
-        const holidaysData = await holidaysRes.json();
-        const activeSchedule = schedulesData.schedules?.find(
-          (s: { active: boolean }) => s.active,
-        );
-        return {
-          schedule: activeSchedule || null,
-          holidays: holidaysData.holidays || [],
-        };
-      } catch (error) {
-        console.error('Error loading schedule config:', error);
-        return null;
-      }
-    }, []);
-
   const isHoliday = useCallback(
     (date: string, holidays: Array<{ date: string }>): boolean => {
       if (!holidays || holidays.length === 0) return false;
@@ -183,7 +161,6 @@ export function useMultiPlantReports() {
 
       try {
         validateForm(formData);
-        const config = await loadScheduleConfig();
         const { startDate, endDate, employeeNumber, shiftId } = formData;
 
         let url = `/api/multi-plant/reports/weekly?startDate=${startDate}&endDate=${endDate}`;
@@ -198,59 +175,6 @@ export function useMultiPlantReports() {
         if (!data.success)
           throw new Error(data.error || 'Error al generar el reporte');
 
-        if (config && data.employees) {
-          data.employees = data.employees.map(
-            (emp: {
-              dailyData: Record<string, DailyData>;
-              daysPresent: number;
-              daysIncomplete: number;
-            }) => {
-              const processedDailyData: Record<string, DailyData> = {};
-              let daysPresent = 0;
-              let daysIncomplete = 0;
-
-              data.workdays.forEach((day: { date: string }) => {
-                const dayData = emp.dailyData[day.date];
-                const status = calculateDayStatus(
-                  dayData,
-                  day.date,
-                  config.schedule,
-                  config.holidays,
-                );
-
-                if (status === 'H' || status === 'N') {
-                  processedDailyData[day.date] = {
-                    ...dayData,
-                    status: status === 'H' ? 'Festivo' : 'No laboral',
-                    isNonWorkday: true,
-                  };
-                } else {
-                  processedDailyData[day.date] = dayData;
-                  if (status === 'A') daysPresent++;
-                  if (status === 'R') {
-                    daysPresent++;
-                    daysIncomplete++;
-                  }
-                }
-              });
-
-              return {
-                ...emp,
-                dailyData: processedDailyData,
-                daysPresent,
-                daysIncomplete,
-              };
-            },
-          );
-
-          data.actualWorkdays = data.workdays.filter(
-            (day: { date: string }) =>
-              !isHoliday(day.date, config.holidays) &&
-              isWorkday(day.date, config.schedule),
-          ).length;
-          data.scheduleConfig = config;
-        }
-
         setReportData(data);
         return data;
       } catch (err: unknown) {
@@ -263,13 +187,7 @@ export function useMultiPlantReports() {
         setIsLoading(false);
       }
     },
-    [
-      validateForm,
-      loadScheduleConfig,
-      calculateDayStatus,
-      isHoliday,
-      isWorkday,
-    ],
+    [validateForm],
   );
 
   const exportToExcel = useCallback(
@@ -295,17 +213,6 @@ export function useMultiPlantReports() {
     setError(null);
   }, []);
 
-  const getStatusColors = useCallback(
-    () => ({
-      Completo: 'bg-green-100 text-green-800 border-green-200',
-      'Sin salida': 'bg-yellow-100 text-yellow-800 border-yellow-200',
-      Incompleto: 'bg-orange-100 text-orange-800 border-orange-200',
-      Ausente: 'bg-red-100 text-red-800 border-red-200',
-      Parcial: 'bg-blue-100 text-blue-800 border-blue-200',
-    }),
-    [],
-  );
-
   return {
     reportData,
     isLoading,
@@ -316,6 +223,5 @@ export function useMultiPlantReports() {
     exportToExcel,
     clearData,
     validateForm,
-    getStatusColors,
   };
 }

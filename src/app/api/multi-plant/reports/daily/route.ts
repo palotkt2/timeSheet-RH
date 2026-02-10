@@ -1,6 +1,7 @@
 import { NextResponse, NextRequest } from 'next/server';
 import { getMultiPlantDB } from '@/lib/multi-plant-db';
 import { getDB, initDB } from '@/lib/db';
+import { formatLocalDate, formatLocalDateTime } from '@/utils/dateUtils';
 
 interface EmployeeInfo {
   employee_number: string;
@@ -20,14 +21,6 @@ interface Session {
   entry: string;
   exit: string;
   hoursWorked: number;
-}
-
-function formatLocalDate(date: Date): string {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-}
-
-function formatLocalDateTime(date: Date): string {
-  return `${formatLocalDate(date)}T${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}:${String(date.getSeconds()).padStart(2, '0')}`;
 }
 
 function calculateSessions(

@@ -195,7 +195,7 @@ export class GenericAdapter extends BaseAdapter {
       const timeout = setTimeout(() => controller.abort(), 5000);
 
       const url = `${this.baseUrl.replace(/\/api$/, '')}${endpoint}`;
-      const response = await fetch(url, {
+      const response = await this._secureFetch(url, {
         method: 'GET',
         signal: controller.signal,
         headers: this._getHeaders(),

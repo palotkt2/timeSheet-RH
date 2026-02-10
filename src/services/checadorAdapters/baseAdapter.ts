@@ -1,5 +1,16 @@
 import type { Plant, AdapterEntry, ConnectionTestResult } from '@/types';
 
+/**
+ * All plant connections use self-signed HTTPS certificates.
+ * Node.js native fetch (undici) does not support per-request TLS options,
+ * so we disable certificate verification globally at module load.
+ * This is safe because this module only runs server-side (API routes).
+ *
+ * IMPORTANT: This must be set ONCE at module level — NOT toggled per-request,
+ * which would create a race condition between concurrent fetches.
+ */
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+
 export interface RemoteEmployee {
   employee_number: string;
   employee_name: string;
@@ -142,29 +153,13 @@ export abstract class BaseAdapter {
 
   /**
    * Performs a fetch that works with self-signed HTTPS certificates.
-   * Node.js native fetch (undici) doesn't support http.Agent,
-   * so we temporarily disable TLS rejection for HTTPS plant connections.
+   * TLS verification is disabled globally at module level (see top of file).
    */
   protected async _secureFetch(
     url: string,
     init: RequestInit = {},
   ): Promise<Response> {
-    const prevTLS = process.env.NODE_TLS_REJECT_UNAUTHORIZED;
-    try {
-      if (this.config.use_https) {
-        process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
-      }
-      return await fetch(url, init);
-    } finally {
-      // Restore original value
-      if (this.config.use_https) {
-        if (prevTLS === undefined) {
-          delete process.env.NODE_TLS_REJECT_UNAUTHORIZED;
-        } else {
-          process.env.NODE_TLS_REJECT_UNAUTHORIZED = prevTLS;
-        }
-      }
-    }
+    return fetch(url, init);
   }
 
   protected async _fetch(

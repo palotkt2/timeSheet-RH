@@ -45,7 +45,6 @@ interface SyncTabProps {
     endDate: string,
   ) => Promise<unknown>;
   onSyncAll: (startDate: string, endDate: string) => Promise<unknown>;
-  clearSyncStatus: () => void;
 }
 
 export default function SyncTab({
