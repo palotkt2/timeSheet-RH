@@ -5,6 +5,27 @@ import type { Plant } from '@/types';
 import { SameAppAdapter } from '@/services/checadorAdapters/sameAppAdapter';
 
 /**
+ * Normalize shift `days` field: remove Saturday (6) and Sunday (0) from
+ * shifts that should be Mon–Fri only.  Only "Guardias" and "FIN DE SEMANA"
+ * shifts legitimately include weekend days.
+ */
+function normalizeDays(shiftName: string, daysJson: string): string {
+  // Guard / weekend shifts keep their original days
+  const upper = (shiftName || '').toUpperCase();
+  if (upper.includes('GUARDIAS') || upper.includes('FIN DE SEMANA')) {
+    return daysJson;
+  }
+  try {
+    const arr: number[] = JSON.parse(daysJson);
+    const filtered = arr.filter((d) => d !== 6 && d !== 0);
+    // Only return changed value if something was actually removed
+    return filtered.length !== arr.length ? JSON.stringify(filtered) : daysJson;
+  } catch {
+    return daysJson;
+  }
+}
+
+/**
  * POST /api/multi-plant/shifts/sync
  * Syncs shift definitions and shift assignments from all active plants.
  *
@@ -90,7 +111,7 @@ export async function POST() {
               s.start_time,
               s.end_time,
               s.tolerance_minutes || 0,
-              s.days,
+              normalizeDays(s.name, s.days),
               s.is_active ?? 1,
               s.custom_hours || '{}',
             );
@@ -103,7 +124,7 @@ export async function POST() {
               a.shift_name,
               a.start_time,
               a.end_time,
-              a.days,
+              normalizeDays(a.shift_name, a.days),
               a.start_date,
               a.end_date,
               a.active ?? 1,
