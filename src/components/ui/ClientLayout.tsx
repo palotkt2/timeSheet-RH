@@ -6,12 +6,14 @@ import { useRouter } from 'next/navigation';
 import Sidebar, { DRAWER_WIDTH, getViewTitle } from './Sidebar';
 import DashboardAppBar from './DashboardAppBar';
 import type { SidebarView } from './Sidebar';
+import type { UserRole } from '@/types';
 
 interface ClientLayoutProps {
   children: React.ReactNode;
   activeView?: SidebarView;
   onViewChange?: (view: SidebarView) => void;
   userName?: string;
+  userRole?: UserRole;
 }
 
 export default function ClientLayout({
@@ -19,6 +21,7 @@ export default function ClientLayout({
   activeView = 'live',
   onViewChange,
   userName = 'Admin',
+  userRole = 'admin',
 }: ClientLayoutProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const router = useRouter();
@@ -42,6 +45,7 @@ export default function ClientLayout({
         onViewChange={handleViewChange}
         mobileOpen={mobileOpen}
         onMobileClose={() => setMobileOpen(false)}
+        userRole={userRole}
       />
 
       <DashboardAppBar

@@ -1,9 +1,31 @@
 import Database from 'better-sqlite3';
+import { createHash, randomBytes } from 'crypto';
 
 /**
  * Base de datos principal (barcode_entries.db).
- * Contiene información de empleados, turnos, asignaciones y checadas locales.
+ * Contiene información de empleados, turnos, asignaciones, checadas y usuarios.
  */
+
+/** Simple password hashing with salt (SHA-256) */
+export function hashPassword(
+  password: string,
+  salt?: string,
+): { hash: string; salt: string } {
+  const s = salt ?? randomBytes(16).toString('hex');
+  const hash = createHash('sha256')
+    .update(s + password)
+    .digest('hex');
+  return { hash, salt: s };
+}
+
+export function verifyPassword(
+  password: string,
+  storedHash: string,
+  salt: string,
+): boolean {
+  const { hash } = hashPassword(password, salt);
+  return hash === storedHash;
+}
 
 let db: Database.Database | null = null;
 
@@ -83,6 +105,33 @@ export function initDB(): Database.Database {
         VALUES (1, 'Turno Matutino', '06:00', '15:30', 15, '[1,2,3,4,5]')
       `,
       ).run();
+    }
+
+    // ── Users table ───────────────────────────────────
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT NOT NULL UNIQUE,
+        password_hash TEXT NOT NULL,
+        password_salt TEXT NOT NULL,
+        name TEXT NOT NULL,
+        role TEXT NOT NULL DEFAULT 'viewer' CHECK(role IN ('admin','supervisor','viewer')),
+        is_active INTEGER NOT NULL DEFAULT 1,
+        created_at TIMESTAMP DEFAULT (datetime('now','localtime')),
+        updated_at TIMESTAMP DEFAULT (datetime('now','localtime'))
+      )
+    `);
+
+    // Seed default admin user (admin / admin)
+    const userCount = db
+      .prepare('SELECT COUNT(*) as count FROM users')
+      .get() as { count: number };
+    if (userCount.count === 0) {
+      const { hash, salt } = hashPassword('admin');
+      db.prepare(
+        `INSERT INTO users (username, password_hash, password_salt, name, role)
+         VALUES ('admin', ?, ?, 'Administrador', 'admin')`,
+      ).run(hash, salt);
     }
   }
   return db;

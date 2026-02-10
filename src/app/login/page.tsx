@@ -17,18 +17,32 @@ export default function LoginPage() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
   const router = useRouter();
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setLoading(true);
 
-    if (username === 'admin' && password === 'admin') {
-      const user = { username: 'admin', name: 'Administrador', role: 'admin' };
-      localStorage.setItem('user', JSON.stringify(user));
-      router.push('/dashboard/multi-plant');
-    } else {
-      setError('Usuario o contraseña incorrectos');
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      });
+      const data = await res.json();
+
+      if (data.success && data.user) {
+        localStorage.setItem('user', JSON.stringify(data.user));
+        router.push('/dashboard/multi-plant');
+      } else {
+        setError(data.error || 'Usuario o contraseña incorrectos');
+      }
+    } catch {
+      setError('Error de conexión con el servidor');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -129,6 +143,7 @@ export default function LoginPage() {
               type="submit"
               fullWidth
               variant="contained"
+              disabled={loading}
               startIcon={<LogIn size={18} />}
               sx={{
                 mt: 3,
@@ -145,17 +160,9 @@ export default function LoginPage() {
                 },
               }}
             >
-              Iniciar Sesión
+              {loading ? 'Ingresando...' : 'Iniciar Sesión'}
             </Button>
           </form>
-
-          <Typography
-            variant="caption"
-            color="text.secondary"
-            sx={{ display: 'block', textAlign: 'center', mt: 3 }}
-          >
-            Usuario: admin / Contraseña: admin
-          </Typography>
         </CardContent>
       </Card>
     </Box>

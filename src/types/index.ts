@@ -2,6 +2,43 @@
 // Type definitions for the Multi-Plant HR System
 // ═══════════════════════════════════════════════════════════════
 
+// ─── User roles & permissions ─────────────────────────────────
+
+export type UserRole = 'admin' | 'supervisor' | 'viewer';
+
+export interface AppUser {
+  id: number;
+  username: string;
+  name: string;
+  role: UserRole;
+  is_active: number;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Views each role can access */
+export const ROLE_PERMISSIONS: Record<UserRole, readonly string[]> = {
+  admin: [
+    'live',
+    'plants',
+    'sync',
+    'employees',
+    'weekly',
+    'daily',
+    'active',
+    'validation',
+    'users',
+  ],
+  supervisor: ['live', 'employees', 'weekly', 'daily', 'active', 'validation'],
+  viewer: ['live', 'weekly', 'daily', 'active', 'validation'],
+} as const;
+
+export const ROLE_LABELS: Record<UserRole, string> = {
+  admin: 'Administrador',
+  supervisor: 'Supervisor',
+  viewer: 'Visor',
+};
+
 // ─── Database: multi_plant.db ─────────────────────────────────
 
 export interface Plant {

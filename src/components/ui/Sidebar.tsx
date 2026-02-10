@@ -24,7 +24,10 @@ import {
   UserCog,
   ShieldCheck,
   Clock,
+  UsersRound,
 } from 'lucide-react';
+import { ROLE_PERMISSIONS } from '@/types';
+import type { UserRole } from '@/types';
 
 export const DRAWER_WIDTH = 260;
 
@@ -36,7 +39,8 @@ export type SidebarView =
   | 'weekly'
   | 'active'
   | 'daily'
-  | 'validation';
+  | 'validation'
+  | 'users';
 
 interface NavItem {
   id: SidebarView;
@@ -72,6 +76,16 @@ const NAV_SECTIONS: NavSection[] = [
     ],
   },
   {
+    title: 'Administración',
+    items: [
+      {
+        id: 'users',
+        label: 'Gestión de Usuarios',
+        icon: <UsersRound size={20} />,
+      },
+    ],
+  },
+  {
     title: 'Reportes',
     items: [
       {
@@ -103,6 +117,7 @@ const VIEW_TITLES: Record<SidebarView, string> = {
   active: 'Empleados Activos',
   daily: 'Reporte Diario',
   validation: 'Validación de Datos',
+  users: 'Gestión de Usuarios',
 };
 
 export function getViewTitle(view: SidebarView): string {
@@ -114,6 +129,7 @@ interface SidebarProps {
   onViewChange: (view: SidebarView) => void;
   mobileOpen: boolean;
   onMobileClose: () => void;
+  userRole?: UserRole;
 }
 
 export default function Sidebar({
@@ -121,9 +137,18 @@ export default function Sidebar({
   onViewChange,
   mobileOpen,
   onMobileClose,
+  userRole = 'admin',
 }: SidebarProps) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+
+  const allowedViews = ROLE_PERMISSIONS[userRole] as readonly string[];
+  const filteredSections = NAV_SECTIONS
+    .map((section) => ({
+      ...section,
+      items: section.items.filter((item) => allowedViews.includes(item.id)),
+    }))
+    .filter((section) => section.items.length > 0);
 
   const drawerContent = (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -154,7 +179,7 @@ export default function Sidebar({
 
       {/* Navigation */}
       <Box sx={{ flex: 1, overflowY: 'auto', py: 1 }}>
-        {NAV_SECTIONS.map((section) => (
+        {filteredSections.map((section) => (
           <List
             key={section.title}
             dense

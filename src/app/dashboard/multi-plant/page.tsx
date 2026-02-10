@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import MultiPlantDashboard from '@/components/MultiPlantDashboard';
 
 interface User {
+  id: number;
   username: string;
   name: string;
   role: string;
@@ -19,9 +20,6 @@ export default function MultiPlantPage() {
     if (userData) {
       const parsedUser: User = JSON.parse(userData);
       setUser(parsedUser);
-      if (parsedUser.role !== 'admin' && parsedUser.role !== 'administrator') {
-        router.push('/dashboard');
-      }
     } else {
       router.push('/login');
     }
@@ -51,5 +49,10 @@ export default function MultiPlantPage() {
     );
   }
 
-  return <MultiPlantDashboard userName={user.name} />;
+  return (
+    <MultiPlantDashboard
+      userName={user.name}
+      userRole={user.role as 'admin' | 'supervisor' | 'viewer'}
+    />
+  );
 }

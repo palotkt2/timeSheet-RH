@@ -11,7 +11,7 @@ import ClientLayout from '@/components/ui/ClientLayout';
 import LiveTab from '@/components/dashboard/LiveTab';
 
 import type { SidebarView } from '@/components/ui/Sidebar';
-import type { Plant, PlantFormData, AlertMessage } from '@/types';
+import type { Plant, PlantFormData, AlertMessage, UserRole } from '@/types';
 
 const Loading = () => (
   <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
@@ -48,13 +48,18 @@ const EmployeesTab = dynamic(
   () => import('@/components/employees/EmployeesTab'),
   { loading: Loading },
 );
+const UsersTab = dynamic(() => import('@/components/users/UsersTab'), {
+  loading: Loading,
+});
 
 interface MultiPlantDashboardProps {
   userName?: string;
+  userRole?: UserRole;
 }
 
 export default function MultiPlantDashboard({
   userName = 'Admin',
+  userRole = 'admin',
 }: MultiPlantDashboardProps) {
   const [activeView, setActiveView] = useState<SidebarView>('live');
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -176,6 +181,8 @@ export default function MultiPlantDashboard({
         return <ValidationTab />;
       case 'employees':
         return <EmployeesTab />;
+      case 'users':
+        return <UsersTab />;
       default:
         return null;
     }
@@ -186,6 +193,7 @@ export default function MultiPlantDashboard({
       activeView={activeView}
       onViewChange={setActiveView}
       userName={userName}
+      userRole={userRole}
     >
       <Box>
         {alertMsg && (
