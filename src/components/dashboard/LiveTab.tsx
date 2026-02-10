@@ -537,11 +537,6 @@ export default function LiveTab({
                     bgcolor: '#16a34a',
                     '&:hover': { bgcolor: '#15803d' },
                     animation: 'pulse 2s infinite',
-                    '@keyframes pulse': {
-                      '0%': { boxShadow: '0 0 0 0 rgba(22,163,74,0.3)' },
-                      '70%': { boxShadow: '0 0 0 6px rgba(22,163,74,0)' },
-                      '100%': { boxShadow: '0 0 0 0 rgba(22,163,74,0)' },
-                    },
                   }
                 : {
                     borderColor: '#d1d5db',
@@ -704,10 +699,6 @@ export default function LiveTab({
                     borderRadius: '50%',
                     bgcolor: '#22c55e',
                     animation: 'blink 1.5s infinite',
-                    '@keyframes blink': {
-                      '0%, 100%': { opacity: 1 },
-                      '50%': { opacity: 0.3 },
-                    },
                   }}
                 />
                 <Typography
@@ -736,14 +727,11 @@ export default function LiveTab({
                       ].map((h) => (
                         <TableCell
                           key={h}
-                          sx={{
-                            fontWeight: 600,
-                            bgcolor: '#fafafa',
-                            borderBottom: '2px solid #e5e7eb',
-                            ...(h === 'Entrada' || h === 'Salida'
+                          sx={
+                            h === 'Entrada' || h === 'Salida'
                               ? { textAlign: 'center', width: 52, p: 0.5 }
-                              : {}),
-                          }}
+                              : undefined
+                          }
                         >
                           {h}
                         </TableCell>
@@ -964,14 +952,11 @@ export default function LiveTab({
                       ].map((h) => (
                         <TableCell
                           key={h}
-                          sx={{
-                            fontWeight: 600,
-                            bgcolor: '#fafafa',
-                            borderBottom: '2px solid #e5e7eb',
-                            ...(h === 'Entrada' || h === 'Salida'
+                          sx={
+                            h === 'Entrada' || h === 'Salida'
                               ? { textAlign: 'center', width: 52, p: 0.5 }
-                              : {}),
-                          }}
+                              : undefined
+                          }
                         >
                           {h}
                         </TableCell>

@@ -352,52 +352,12 @@ export default function ValidationTab() {
           <Table stickyHeader size="small">
             <TableHead>
               <TableRow>
+                <TableCell>Empleado</TableCell>
+                <TableCell sx={{ textAlign: 'center' }}>Estado</TableCell>
+                <TableCell sx={{ textAlign: 'center' }}>Horas</TableCell>
+                <TableCell sx={{ textAlign: 'center' }}>Ent/Sal</TableCell>
                 <TableCell
                   sx={{
-                    fontWeight: 600,
-                    bgcolor: '#f8f9fb',
-                    color: '#374151',
-                    borderBottom: '2px solid #e5e7eb',
-                  }}
-                >
-                  Empleado
-                </TableCell>
-                <TableCell
-                  sx={{
-                    fontWeight: 600,
-                    bgcolor: '#f8f9fb',
-                    color: '#374151',
-                    borderBottom: '2px solid #e5e7eb',
-                    textAlign: 'center',
-                  }}
-                >
-                  Estado
-                </TableCell>
-                <TableCell
-                  sx={{
-                    fontWeight: 600,
-                    bgcolor: '#f8f9fb',
-                    color: '#374151',
-                    borderBottom: '2px solid #e5e7eb',
-                    textAlign: 'center',
-                  }}
-                >
-                  Horas
-                </TableCell>
-                <TableCell
-                  sx={{
-                    fontWeight: 600,
-                    bgcolor: '#f8f9fb',
-                    color: '#374151',
-                    borderBottom: '2px solid #e5e7eb',
-                    textAlign: 'center',
-                  }}
-                >
-                  Ent/Sal
-                </TableCell>
-                <TableCell
-                  sx={{
-                    fontWeight: 600,
                     bgcolor: '#f0fdfa',
                     color: '#0d9488',
                     borderBottom: '2px solid #99f6e4',
@@ -406,16 +366,7 @@ export default function ValidationTab() {
                 >
                   Plantas
                 </TableCell>
-                <TableCell
-                  sx={{
-                    fontWeight: 600,
-                    bgcolor: '#f8f9fb',
-                    color: '#374151',
-                    borderBottom: '2px solid #e5e7eb',
-                  }}
-                >
-                  Problemas
-                </TableCell>
+                <TableCell>Problemas</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>

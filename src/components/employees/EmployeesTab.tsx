@@ -455,13 +455,9 @@ export default function EmployeesTab() {
                     <TableCell
                       key={col.label}
                       sx={{
-                        fontWeight: 600,
-                        bgcolor: '#f8f9fb',
-                        borderBottom: '2px solid #e5e7eb',
                         width: col.width,
                         textAlign: col.align || 'left',
                         fontSize: '0.8rem',
-                        color: '#374151',
                       }}
                     >
                       {col.label}

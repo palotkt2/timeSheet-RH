@@ -642,10 +642,6 @@ export default function WeeklyReportTab() {
               <TableRow>
                 <TableCell
                   sx={{
-                    fontWeight: 600,
-                    bgcolor: '#f8f9fb',
-                    color: '#374151',
-                    borderBottom: '2px solid #e5e7eb',
                     position: 'sticky',
                     left: 0,
                     zIndex: 3,
@@ -655,10 +651,6 @@ export default function WeeklyReportTab() {
                 </TableCell>
                 <TableCell
                   sx={{
-                    fontWeight: 600,
-                    bgcolor: '#f8f9fb',
-                    color: '#374151',
-                    borderBottom: '2px solid #e5e7eb',
                     position: 'sticky',
                     left: 40,
                     zIndex: 3,
@@ -668,10 +660,6 @@ export default function WeeklyReportTab() {
                 </TableCell>
                 <TableCell
                   sx={{
-                    fontWeight: 600,
-                    bgcolor: '#f8f9fb',
-                    color: '#374151',
-                    borderBottom: '2px solid #e5e7eb',
                     minWidth: 160,
                     position: 'sticky',
                     left: 90,
@@ -684,10 +672,6 @@ export default function WeeklyReportTab() {
                   <TableCell
                     key={d.date}
                     sx={{
-                      fontWeight: 600,
-                      bgcolor: '#f8f9fb',
-                      color: '#374151',
-                      borderBottom: '2px solid #e5e7eb',
                       textAlign: 'center',
                       minWidth: 40,
                     }}

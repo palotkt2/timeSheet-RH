@@ -399,111 +399,25 @@ export default function DailyReportTab() {
             <Table stickyHeader size="small">
               <TableHead>
                 <TableRow>
-                  <TableCell
-                    sx={{
-                      fontWeight: 600,
-                      bgcolor: '#f8f9fb',
-                      color: '#374151',
-                      borderBottom: '2px solid #e5e7eb',
-                      textAlign: 'center',
-                      width: 52,
-                      p: 0.5,
-                    }}
-                  >
+                  <TableCell sx={{ textAlign: 'center', width: 52, p: 0.5 }}>
                     Entrada
                   </TableCell>
-                  <TableCell
-                    sx={{
-                      fontWeight: 600,
-                      bgcolor: '#f8f9fb',
-                      color: '#374151',
-                      borderBottom: '2px solid #e5e7eb',
-                      textAlign: 'center',
-                      width: 52,
-                      p: 0.5,
-                    }}
-                  >
+                  <TableCell sx={{ textAlign: 'center', width: 52, p: 0.5 }}>
                     Salida
                   </TableCell>
-                  <TableCell
-                    sx={{
-                      fontWeight: 600,
-                      bgcolor: '#f8f9fb',
-                      color: '#374151',
-                      borderBottom: '2px solid #e5e7eb',
-                    }}
-                  >
-                    Empleado
-                  </TableCell>
-                  <TableCell
-                    sx={{
-                      fontWeight: 600,
-                      bgcolor: '#f8f9fb',
-                      color: '#374151',
-                      borderBottom: '2px solid #e5e7eb',
-                      textAlign: 'center',
-                    }}
-                  >
+                  <TableCell>Empleado</TableCell>
+                  <TableCell sx={{ textAlign: 'center' }}>
                     Primera Entrada
                   </TableCell>
-                  <TableCell
-                    sx={{
-                      fontWeight: 600,
-                      bgcolor: '#f8f9fb',
-                      color: '#374151',
-                      borderBottom: '2px solid #e5e7eb',
-                      textAlign: 'center',
-                    }}
-                  >
+                  <TableCell sx={{ textAlign: 'center' }}>
                     Última Salida
                   </TableCell>
+                  <TableCell sx={{ textAlign: 'center' }}>Sesiones</TableCell>
+                  <TableCell sx={{ textAlign: 'center' }}>Horas</TableCell>
+                  <TableCell sx={{ textAlign: 'center' }}>Estado</TableCell>
+                  <TableCell sx={{ textAlign: 'center' }}>Registros</TableCell>
                   <TableCell
                     sx={{
-                      fontWeight: 600,
-                      bgcolor: '#f8f9fb',
-                      color: '#374151',
-                      borderBottom: '2px solid #e5e7eb',
-                      textAlign: 'center',
-                    }}
-                  >
-                    Sesiones
-                  </TableCell>
-                  <TableCell
-                    sx={{
-                      fontWeight: 600,
-                      bgcolor: '#f8f9fb',
-                      color: '#374151',
-                      borderBottom: '2px solid #e5e7eb',
-                      textAlign: 'center',
-                    }}
-                  >
-                    Horas
-                  </TableCell>
-                  <TableCell
-                    sx={{
-                      fontWeight: 600,
-                      bgcolor: '#f8f9fb',
-                      color: '#374151',
-                      borderBottom: '2px solid #e5e7eb',
-                      textAlign: 'center',
-                    }}
-                  >
-                    Estado
-                  </TableCell>
-                  <TableCell
-                    sx={{
-                      fontWeight: 600,
-                      bgcolor: '#f8f9fb',
-                      color: '#374151',
-                      borderBottom: '2px solid #e5e7eb',
-                      textAlign: 'center',
-                    }}
-                  >
-                    Registros
-                  </TableCell>
-                  <TableCell
-                    sx={{
-                      fontWeight: 600,
                       bgcolor: '#f0fdfa',
                       color: '#0d9488',
                       borderBottom: '2px solid #99f6e4',

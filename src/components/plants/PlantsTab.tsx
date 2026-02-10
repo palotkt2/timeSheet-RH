@@ -300,17 +300,6 @@ export default function PlantsTab({
                         ...(hasStatus && isOnline
                           ? {
                               animation: 'pulse-dot 2s infinite',
-                              '@keyframes pulse-dot': {
-                                '0%': {
-                                  boxShadow: `0 0 0 0 ${alpha('#16a34a', 0.4)}`,
-                                },
-                                '70%': {
-                                  boxShadow: `0 0 0 6px ${alpha('#16a34a', 0)}`,
-                                },
-                                '100%': {
-                                  boxShadow: `0 0 0 0 ${alpha('#16a34a', 0)}`,
-                                },
-                              },
                             }
                           : {}),
                       }}
