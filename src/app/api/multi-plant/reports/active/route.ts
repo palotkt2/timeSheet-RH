@@ -88,10 +88,19 @@ export async function GET() {
         const firstEntry = inferred.entries[0];
         const lastScan = inferred.deduped[inferred.deduped.length - 1];
 
-        // Calculate hours worked so far (from first entry to now)
+        // Calculate hours: completed sessions + current open session elapsed
+        const { totalHours: completedHours } = calculateSessions(
+          inferred.entries,
+          inferred.exits,
+        );
+        const lastUnmatchedEntry =
+          inferred.entries[inferred.entries.length - 1];
         const now = new Date();
+        const currentElapsed =
+          (now.getTime() - lastUnmatchedEntry.getTime()) / (1000 * 60 * 60);
         const hoursWorked =
-          (now.getTime() - firstEntry.getTime()) / (1000 * 60 * 60);
+          completedHours +
+          (currentElapsed >= 0 && currentElapsed <= 24 ? currentElapsed : 0);
 
         activeEmployees.push({
           employeeNumber: empNum,

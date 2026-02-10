@@ -136,7 +136,19 @@ export async function GET() {
         inferred.entries,
         inferred.exits,
       );
-      const workedHours = active ? 0 : totalHours;
+
+      // For active employees, add elapsed time from last unmatched entry
+      let workedHours = totalHours;
+      if (active && inferred.entries.length > inferred.exits.length) {
+        const lastUnmatchedEntry =
+          inferred.entries[inferred.entries.length - 1];
+        const elapsed =
+          (Date.now() - lastUnmatchedEntry.getTime()) / (1000 * 60 * 60);
+        if (elapsed >= 0 && elapsed <= 24) {
+          workedHours += elapsed;
+        }
+      }
+      workedHours = Math.round(workedHours * 100) / 100;
 
       data.lastAction = active ? 'Entrada' : 'Salida';
 

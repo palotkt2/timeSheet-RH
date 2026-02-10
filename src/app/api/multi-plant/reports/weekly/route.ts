@@ -54,12 +54,16 @@ function getDayStatus(
   exitsCount: number,
   hasValidSessions: boolean,
   totalHours: number,
+  expectedHours = 9.5,
 ): string {
   // Si no hay registros en absoluto
   if (entriesCount === 0 && exitsCount === 0) return 'Ausente';
 
+  // Use 60% of expected shift hours as "Completo" threshold
+  const completeThreshold = Math.max(expectedHours * 0.6, 1);
+
   // Si hay horas trabajadas suficientes, es un día completo o parcial
-  if (hasValidSessions && totalHours >= 6) return 'Completo';
+  if (hasValidSessions && totalHours >= completeThreshold) return 'Completo';
   if (hasValidSessions && totalHours >= 1) return 'Parcial';
 
   // Casos problemáticos: registros pero sin sesiones válidas
@@ -488,6 +492,7 @@ export async function GET(request: NextRequest) {
           exits.length,
           sessions.length > 0,
           dayHours,
+          expectedDailyHours,
         );
         if (status === 'Completo') daysComplete++;
 
@@ -509,11 +514,10 @@ export async function GET(request: NextRequest) {
         if (!dailyData[date].isWorkday) {
           dailyOvertimeHours = dayHours;
         } else if (dayHours > 0) {
-          const [startH, startM] = assignedShift.start_time
-            .split(':')
-            .map(Number);
-          const [endH, endM] = assignedShift.end_time.split(':').map(Number);
-          const scheduledHours = endH + endM / 60 - (startH + startM / 60);
+          const scheduledHours = calculateShiftHours(
+            assignedShift.start_time,
+            assignedShift.end_time,
+          );
           if (scheduledHours > 0 && dayHours > scheduledHours) {
             dailyOvertimeHours = dayHours - scheduledHours;
           }
