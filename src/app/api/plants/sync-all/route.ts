@@ -1,6 +1,7 @@
 import { NextResponse, NextRequest } from 'next/server';
 import { getMultiPlantDB } from '@/lib/multi-plant-db';
 import { createAdapter } from '@/services/checadorAdapters/adapterFactory';
+import { saveEntryPhoto, entryPhotoExists } from '@/lib/photo-storage';
 import type { Plant, AdapterEntry } from '@/types';
 
 // POST /api/plants/sync-all
@@ -38,6 +39,7 @@ export async function POST(request: NextRequest) {
         inserted: number;
         duplicates: number;
         namesUpdated: number;
+        photosSaved: number;
       };
       error?: string;
     }
@@ -50,6 +52,7 @@ export async function POST(request: NextRequest) {
         const entries = await adapter.fetchEntriesFiltered(startDate, endDate);
 
         let inserted = 0;
+        let photosSaved = 0;
         if (entries && entries.length > 0) {
           const insertStmt = db.prepare(`
             INSERT OR IGNORE INTO plant_entries (plant_id, employee_number, timestamp, action, raw_data, synced_at, created_at)
@@ -66,6 +69,29 @@ export async function POST(request: NextRequest) {
                 entry.raw ? JSON.stringify(entry.raw) : null,
               );
               if (result.changes > 0) inserted++;
+              // Save photo to disk if present and not already saved
+              if (entry.photo) {
+                try {
+                  if (
+                    result.changes > 0 ||
+                    !entryPhotoExists(
+                      entry.employee_number,
+                      entry.timestamp,
+                      entry.action,
+                    )
+                  ) {
+                    saveEntryPhoto(
+                      entry.employee_number,
+                      entry.timestamp,
+                      entry.action,
+                      entry.photo,
+                    );
+                    photosSaved++;
+                  }
+                } catch {
+                  // Non-critical: don't fail sync if photo save fails
+                }
+              }
             }
           });
           insertMany(entries);
@@ -131,6 +157,7 @@ export async function POST(request: NextRequest) {
             inserted,
             duplicates: (entries?.length || 0) - inserted,
             namesUpdated,
+            photosSaved,
           },
         });
       } catch (plantError: unknown) {

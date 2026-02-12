@@ -36,6 +36,8 @@ export async function POST(request: NextRequest) {
       api_base_path,
       adapter_type,
       auth_token,
+      auth_email,
+      auth_password,
       field_mapping,
       use_https,
     } = body;
@@ -61,8 +63,8 @@ export async function POST(request: NextRequest) {
     const result = db
       .prepare(
         `
-      INSERT INTO plants (name, ip_address, port, api_base_path, adapter_type, auth_token, field_mapping, use_https)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO plants (name, ip_address, port, api_base_path, adapter_type, auth_token, auth_email, auth_password, field_mapping, use_https)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
       )
       .run(
@@ -72,6 +74,8 @@ export async function POST(request: NextRequest) {
         api_base_path || '/api',
         adapter_type || 'generic',
         auth_token || null,
+        auth_email || null,
+        auth_password || null,
         field_mapping
           ? typeof field_mapping === 'string'
             ? field_mapping

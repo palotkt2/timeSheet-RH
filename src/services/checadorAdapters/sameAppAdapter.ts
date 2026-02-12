@@ -8,10 +8,135 @@ import {
 /**
  * Adapter for remote instances that run the same Next.js app.
  * Consumes /api/barcode-entries endpoint with the same format.
+ * Supports cookie-based auth via /api/auth/login for protected endpoints.
  */
 export class SameAppAdapter extends BaseAdapter {
+  /** Cached auth cookie (e.g. "auth-token=eyJ...") */
+  private _authCookie: string | null = null;
+  /** Timestamp when cookie was obtained (for expiry) */
+  private _authCookieTime = 0;
+  /** Cookie TTL: 50 minutes (server issues 60 min tokens) */
+  private static readonly COOKIE_TTL_MS = 50 * 60 * 1000;
+
   constructor(plantConfig: Plant) {
     super(plantConfig);
+  }
+
+  /**
+   * Login to the remote plant and cache the auth cookie.
+   * Only works if auth_email & auth_password are configured on the plant.
+   * Returns the cookie string or null if login failed/not configured.
+   */
+  private async _login(): Promise<string | null> {
+    if (!this.config.auth_email || !this.config.auth_password) return null;
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10_000);
+    try {
+      const response = await this._secureFetch(`${this.baseUrl}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: this.config.auth_email,
+          password: this.config.auth_password,
+        }),
+        signal: controller.signal,
+      });
+
+      if (!response.ok) return null;
+
+      // Extract auth-token cookie from Set-Cookie header
+      const setCookies = response.headers.getSetCookie?.() ?? [];
+      for (const cookie of setCookies) {
+        if (cookie.startsWith('auth-token=')) {
+          const tokenPart = cookie.split(';')[0]; // "auth-token=eyJ..."
+          this._authCookie = tokenPart;
+          this._authCookieTime = Date.now();
+          return tokenPart;
+        }
+      }
+      return null;
+    } catch {
+      return null;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  /**
+   * Get a valid auth cookie, using cache if fresh or logging in again.
+   */
+  private async _getAuthCookie(): Promise<string | null> {
+    if (
+      this._authCookie &&
+      Date.now() - this._authCookieTime < SameAppAdapter.COOKIE_TTL_MS
+    ) {
+      return this._authCookie;
+    }
+    return this._login();
+  }
+
+  /**
+   * Fetch with automatic 401 retry: if request fails with 401,
+   * login and retry once with the auth cookie.
+   */
+  protected async _fetchWithAuth(
+    url: string,
+    options: RequestInit = {},
+  ): Promise<Response> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30_000);
+
+    const doFetch = async (cookie: string | null) => {
+      const headers = {
+        ...this._getHeaders(),
+        ...((options.headers as Record<string, string>) || {}),
+      };
+      if (cookie) {
+        headers['Cookie'] = cookie;
+      }
+      return this._secureFetch(url, {
+        ...options,
+        headers,
+        signal: controller.signal,
+      });
+    };
+
+    try {
+      let response = await doFetch(await this._getAuthCookie());
+
+      if (
+        response.status === 401 &&
+        this.config.auth_email &&
+        this.config.auth_password
+      ) {
+        const cookie = await this._login();
+        if (cookie) {
+          response = await doFetch(cookie);
+        }
+      }
+
+      return response;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  /**
+   * Override base _fetch to include auth cookies on every request.
+   * If a 401 is returned and credentials are configured, auto-login and retry.
+   */
+  protected override async _fetch(
+    url: string,
+    options: RequestInit = {},
+  ): Promise<Record<string, unknown>> {
+    const response = await this._fetchWithAuth(url, options);
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+
+    return (await response.json()) as Record<string, unknown>;
   }
 
   async fetchEntries(
@@ -136,16 +261,23 @@ export class SameAppAdapter extends BaseAdapter {
 
   /**
    * Fetch department list from the remote plant's /api/departments endpoint.
-   * Returns a code→name map. Falls back to empty map if endpoint requires auth.
+   * Returns a code→name map. Auto-authenticates if plant has credentials.
    */
   async fetchDepartments(): Promise<Record<string, string>> {
     try {
-      const response = await this._secureFetch(`${this.baseUrl}/departments`, {
-        method: 'GET',
-        headers: this._getHeaders(),
-      });
+      const response = await this._fetchWithAuth(
+        `${this.baseUrl}/departments`,
+        {
+          method: 'GET',
+        },
+      );
       if (!response.ok) return {};
-      const departments = (await response.json()) as Array<{
+      const body = await response.json();
+      const departments = (
+        Array.isArray(body)
+          ? body
+          : (body as Record<string, unknown>).departments || []
+      ) as Array<{
         code?: string;
         name?: string;
       }>;
@@ -303,17 +435,58 @@ export class SameAppAdapter extends BaseAdapter {
     }
   }
 
+  /**
+   * Create a new department on the remote plant.
+   * POST /api/departments → { code, name, description }
+   * Auto-authenticates if plant has credentials.
+   */
+  async createDepartment(dept: {
+    code: string;
+    name: string;
+    description?: string;
+  }): Promise<{ success: boolean; message?: string }> {
+    try {
+      const response = await this._fetchWithAuth(
+        `${this.baseUrl}/departments`,
+        {
+          method: 'POST',
+          body: JSON.stringify(dept),
+        },
+      );
+      const data = (await response.json()) as {
+        success?: boolean;
+        message?: string;
+        error?: string;
+      };
+
+      if (data.success) {
+        return { success: true, message: data.message };
+      }
+      return {
+        success: false,
+        message: data.error || data.message || 'Error desconocido',
+      };
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Error de conexión';
+      return { success: false, message: msg };
+    }
+  }
+
   async testConnection(): Promise<ConnectionTestResult> {
     try {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 5000);
+
+      const cookie = await this._getAuthCookie();
+      const headers = this._getHeaders();
+      if (cookie) headers['Cookie'] = cookie;
 
       const response = await this._secureFetch(
         `${this.baseUrl}/barcode-entries?page=1&limit=1`,
         {
           method: 'GET',
           signal: controller.signal,
-          headers: this._getHeaders(),
+          headers,
         },
       );
 

@@ -12,6 +12,16 @@ import path from 'path';
 const PHOTOS_BASE = path.join(process.cwd(), 'data', 'employee-photos');
 
 /**
+ * Sanitize an employee number to prevent path traversal.
+ * Only allows digits (and leading zeros). Strips everything else.
+ */
+function sanitizeEmployeeNumber(empNum: string): string {
+  const safe = empNum.replace(/[^0-9]/g, '');
+  if (!safe) throw new Error(`Invalid employee number: ${empNum}`);
+  return safe;
+}
+
+/**
  * Save a photo from a barcode entry to disk.
  * @param employeeNumber - Employee number (folder name)
  * @param timestamp - Entry timestamp like "2026-02-10T06:08:42.887"
@@ -24,6 +34,7 @@ export function saveEntryPhoto(
   action: string,
   photoData: string,
 ): string {
+  employeeNumber = sanitizeEmployeeNumber(employeeNumber);
   const dateStr = timestamp.split('T')[0]; // "2026-02-10"
   const cleanAction = (action || 'Entrada').replace(/\s+/g, '_');
 
@@ -50,6 +61,7 @@ export function saveEntryPhoto(
  * Find the latest photo for an employee (most recent date, preferring Entrada).
  */
 export function findLatestPhoto(employeeNumber: string): string | null {
+  employeeNumber = sanitizeEmployeeNumber(employeeNumber);
   const empDir = path.join(PHOTOS_BASE, employeeNumber);
   if (!existsSync(empDir)) return null;
 
@@ -81,6 +93,7 @@ export function findPhotosForDate(
   employeeNumber: string,
   date: string, // "YYYY-MM-DD"
 ): { entry: string | null; exit: string | null } {
+  employeeNumber = sanitizeEmployeeNumber(employeeNumber);
   const empDir = path.join(PHOTOS_BASE, employeeNumber);
   if (!existsSync(empDir)) return { entry: null, exit: null };
 
@@ -99,10 +112,32 @@ export function findPhotosForDate(
 }
 
 /**
+ * Check whether the photo file for a given entry already exists on disk.
+ */
+export function entryPhotoExists(
+  employeeNumber: string,
+  timestamp: string,
+  action: string,
+): boolean {
+  try {
+    employeeNumber = sanitizeEmployeeNumber(employeeNumber);
+    const dateStr = timestamp.split('T')[0];
+    const cleanAction = (action || 'Entrada').replace(/\s+/g, '_');
+    const fileName = `${dateStr}_${cleanAction}.jpg`;
+    const filePath = path.join(PHOTOS_BASE, employeeNumber, fileName);
+    return existsSync(filePath);
+  } catch {
+    return false;
+  }
+}
+
+/**
  * List all employees that have at least one photo on disk.
  */
 export function listEmployeesWithPhotos(): string[] {
   if (!existsSync(PHOTOS_BASE)) return [];
+  // Note: this function reads directory names directly, which are already
+  // sanitized numerics created by saveEntryPhoto. No user input involved.
 
   try {
     return readdirSync(PHOTOS_BASE, { withFileTypes: true })

@@ -72,7 +72,8 @@ export async function POST() {
          start_date = excluded.start_date,
          end_date = excluded.end_date,
          active = excluded.active,
-         synced_at = datetime('now', 'localtime')`,
+         synced_at = datetime('now', 'localtime')
+       WHERE is_manual = 0 OR is_manual IS NULL`,
     );
 
     let totalShifts = 0;

@@ -1,7 +1,7 @@
 import { NextResponse, NextRequest } from 'next/server';
 import { getMultiPlantDB } from '@/lib/multi-plant-db';
 import { createAdapter } from '@/services/checadorAdapters/adapterFactory';
-import { saveEntryPhoto } from '@/lib/photo-storage';
+import { saveEntryPhoto, entryPhotoExists } from '@/lib/photo-storage';
 import type { Plant } from '@/types';
 
 type RouteContext = { params: Promise<{ id: string }> };
@@ -64,9 +64,20 @@ export async function POST(request: NextRequest, context: RouteContext) {
         );
         if (result.changes > 0) {
           inserted++;
-          // Save photo to disk if present (only for new entries)
-          if (entry.photo) {
-            try {
+        }
+        // Save photo to disk if present and not already saved
+        // This covers both new entries AND retries for entries where
+        // the photo save failed on a previous sync
+        if (entry.photo) {
+          try {
+            if (
+              result.changes > 0 ||
+              !entryPhotoExists(
+                entry.employee_number,
+                entry.timestamp,
+                entry.action,
+              )
+            ) {
               saveEntryPhoto(
                 entry.employee_number,
                 entry.timestamp,
@@ -74,9 +85,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
                 entry.photo,
               );
               photosSaved++;
-            } catch {
-              // Non-critical: don't fail sync if photo save fails
             }
+          } catch {
+            // Non-critical: don't fail sync if photo save fails
           }
         }
       }

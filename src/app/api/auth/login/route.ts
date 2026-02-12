@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDB, verifyPassword } from '@/lib/db';
+import { setAuthCookies } from '@/lib/auth';
+import type { UserRole } from '@/types';
 
 /**
  * POST /api/auth/login
- * Validate credentials against the users table.
+ * Validate credentials against the users table and issue JWT cookies.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -28,7 +30,7 @@ export async function POST(request: NextRequest) {
           password_hash: string;
           password_salt: string;
           name: string;
-          role: string;
+          role: UserRole;
           is_active: number;
         }
       | undefined;
@@ -57,15 +59,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    return NextResponse.json({
+    const userData = {
+      id: user.id,
+      username: user.username,
+      name: user.name,
+      role: user.role,
+    };
+
+    const response = NextResponse.json({
       success: true,
-      user: {
-        id: user.id,
-        username: user.username,
-        name: user.name,
-        role: user.role,
-      },
+      user: userData,
     });
+
+    return setAuthCookies(response, userData);
   } catch (err) {
     console.error('Login error:', err);
     return NextResponse.json(

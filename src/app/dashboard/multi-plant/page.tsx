@@ -3,26 +3,39 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import MultiPlantDashboard from '@/components/MultiPlantDashboard';
+import type { UserRole } from '@/types';
 
-interface User {
+interface AuthUser {
   id: number;
   username: string;
   name: string;
-  role: string;
+  role: UserRole;
 }
 
 export default function MultiPlantPage() {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(null);
   const router = useRouter();
 
   useEffect(() => {
-    const userData = localStorage.getItem('user');
-    if (userData) {
-      const parsedUser: User = JSON.parse(userData);
-      setUser(parsedUser);
-    } else {
-      router.push('/login');
-    }
+    // Verify session via cookie-based auth check
+    fetch('/api/auth/check')
+      .then((res) => {
+        if (!res.ok) throw new Error('Not authenticated');
+        return res.json();
+      })
+      .then((data) => {
+        if (data.success && data.user) {
+          setUser(data.user);
+          // Keep localStorage in sync for client-side reads
+          localStorage.setItem('user', JSON.stringify(data.user));
+        } else {
+          throw new Error('Invalid session');
+        }
+      })
+      .catch(() => {
+        localStorage.removeItem('user');
+        router.push('/login');
+      });
   }, [router]);
 
   if (!user) {
@@ -49,10 +62,5 @@ export default function MultiPlantPage() {
     );
   }
 
-  return (
-    <MultiPlantDashboard
-      userName={user.name}
-      userRole={user.role as 'admin' | 'supervisor' | 'viewer'}
-    />
-  );
+  return <MultiPlantDashboard userName={user.name} userRole={user.role} />;
 }

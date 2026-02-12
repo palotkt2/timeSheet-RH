@@ -9,14 +9,16 @@ import type { Plant } from '@/types';
  *
  * Register an employee locally and push to selected remote plants (checadores).
  * Optionally assign a shift on each selected plant.
+ * If the department is new (is_new_department=true), creates it on each plant first.
  *
  * Body: {
  *   employee_number: string,
  *   employee_name: string,
  *   employee_role?: string,
- *   department?: string,
- *   plant_ids: number[],         // which checadores to push to
- *   shift_id?: number,           // local shift id from multi_plant.db (optional)
+ *   department?: string,          // code if existing, name if new
+ *   is_new_department?: boolean,   // true if user typed a new department
+ *   plant_ids: number[],           // which checadores to push to
+ *   shift_id?: number,             // local shift id from multi_plant.db (optional)
  * }
  */
 export async function POST(request: NextRequest) {
@@ -28,6 +30,7 @@ export async function POST(request: NextRequest) {
       employee_name,
       employee_role,
       department,
+      is_new_department,
       plant_ids,
       shift_id,
     } = body as {
@@ -35,6 +38,7 @@ export async function POST(request: NextRequest) {
       employee_name: string;
       employee_role?: string;
       department?: string;
+      is_new_department?: boolean;
       plant_ids: number[];
       shift_id?: number;
     };
@@ -119,12 +123,50 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 3. Push to each selected plant
+    // 3. Load plants and build lookup map
     const plants = db
       .prepare('SELECT * FROM plants WHERE is_active = 1')
       .all() as Plant[];
     const plantMap = new Map(plants.map((p) => [p.id, p]));
 
+    // 4. If this is a new department, create it on each selected plant first
+    let departmentCode = department?.trim() || '';
+    if (is_new_department && departmentCode) {
+      // Generate a slug-style code from the name
+      const newCode = departmentCode
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '') // strip accents
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_|_$/g, '');
+
+      for (const plantId of plant_ids) {
+        const plant = plantMap.get(plantId);
+        if (!plant) continue;
+        const adapter = createAdapter(plant);
+        if (!(adapter instanceof SameAppAdapter)) continue;
+
+        try {
+          await adapter.createDepartment({
+            code: newCode,
+            name: departmentCode,
+            description: `Creado desde RH - ${departmentCode}`,
+          });
+        } catch {
+          // Non-critical: the employee can still be registered with the dept name
+        }
+      }
+      // Use the generated code for the employee registration
+      departmentCode = newCode;
+
+      // Update local DB with the generated slug code
+      db.prepare(
+        `UPDATE employee_names SET department = ?, updated_at = datetime('now', 'localtime')
+         WHERE employee_number = ?`,
+      ).run(newCode, employee_number.trim());
+    }
+
+    // 5. Push to each selected plant
     const today = new Date();
     const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 
@@ -166,7 +208,7 @@ export async function POST(request: NextRequest) {
         employee_number: employee_number.trim(),
         employee_name: employee_name.trim(),
         employee_role: employee_role?.trim() || 'employee',
-        department: department?.trim() || '',
+        department: departmentCode || '',
         date: dateStr,
       });
 
@@ -211,7 +253,7 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // 4. Also save shift assignment locally if shift_id provided
+    // 6. Also save shift assignment locally if shift_id provided
     if (shift_id && shiftInfo) {
       for (const plantId of plant_ids) {
         const remoteShiftId = shiftPlantMap.get(plantId);

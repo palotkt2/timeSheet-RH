@@ -51,6 +51,9 @@ const EmployeesTab = dynamic(
 const UsersTab = dynamic(() => import('@/components/users/UsersTab'), {
   loading: Loading,
 });
+const ShiftsTab = dynamic(() => import('@/components/shifts/ShiftsTab'), {
+  loading: Loading,
+});
 
 interface MultiPlantDashboardProps {
   userName?: string;
@@ -181,6 +184,8 @@ export default function MultiPlantDashboard({
         return <ValidationTab />;
       case 'employees':
         return <EmployeesTab />;
+      case 'shifts':
+        return <ShiftsTab />;
       case 'users':
         return <UsersTab />;
       default:

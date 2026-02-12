@@ -2,6 +2,7 @@
   "name": "multiplant",
   "version": "1.0.0",
   "private": true,
+  "author": "Humberto Alonso <humberto.alonso.gamez@gmail.com>",
   "scripts": {
     "dev": "next dev",
     "build": "next build",

@@ -38,6 +38,18 @@ export function getMultiPlantDB(): Database.Database {
       // Column already exists — ignore
     }
 
+    // Migration: add auth_email / auth_password columns
+    try {
+      mpDb.exec(`ALTER TABLE plants ADD COLUMN auth_email TEXT`);
+    } catch {
+      // Column already exists — ignore
+    }
+    try {
+      mpDb.exec(`ALTER TABLE plants ADD COLUMN auth_password TEXT`);
+    } catch {
+      // Column already exists — ignore
+    }
+
     mpDb.exec(`
       CREATE TABLE IF NOT EXISTS plant_entries (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -145,6 +157,15 @@ export function getMultiPlantDB(): Database.Database {
         UNIQUE(employee_number, source_plant_id)
       )
     `);
+
+    // Migration: add is_manual column to shift_assignments
+    try {
+      mpDb.exec(
+        `ALTER TABLE shift_assignments ADD COLUMN is_manual INTEGER DEFAULT 0`,
+      );
+    } catch {
+      // Column already exists — ignore
+    }
 
     mpDb.exec(`
       CREATE INDEX IF NOT EXISTS idx_sa_employee ON shift_assignments(employee_number);

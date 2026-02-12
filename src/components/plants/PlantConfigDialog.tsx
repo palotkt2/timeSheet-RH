@@ -78,6 +78,8 @@ export default function PlantConfigDialog({
     api_base_path: '/api',
     adapter_type: 'same-app' as 'same-app' | 'generic',
     auth_token: '',
+    auth_email: '',
+    auth_password: '',
     field_mapping: JSON.stringify(DEFAULT_FIELD_MAPPING, null, 2),
     use_https: false,
   });
@@ -96,6 +98,8 @@ export default function PlantConfigDialog({
         api_base_path: plant.api_base_path || '/api',
         adapter_type: plant.adapter_type || 'same-app',
         auth_token: plant.auth_token || '',
+        auth_email: plant.auth_email || '',
+        auth_password: plant.auth_password || '',
         field_mapping:
           plant.field_mapping || JSON.stringify(DEFAULT_FIELD_MAPPING, null, 2),
         use_https: !!plant.use_https,
@@ -108,6 +112,8 @@ export default function PlantConfigDialog({
         api_base_path: '/api',
         adapter_type: 'same-app',
         auth_token: '',
+        auth_email: '',
+        auth_password: '',
         field_mapping: JSON.stringify(DEFAULT_FIELD_MAPPING, null, 2),
         use_https: false,
       });
@@ -306,6 +312,31 @@ export default function PlantConfigDialog({
           fullWidth
           sx={{ mt: 2 }}
         />
+
+        <Box
+          sx={{
+            display: 'grid',
+            gridTemplateColumns: '1fr 1fr',
+            gap: 2,
+            mt: 2,
+          }}
+        >
+          <TextField
+            label="Email de autenticación (opcional)"
+            value={formData.auth_email}
+            onChange={handleChange('auth_email')}
+            placeholder="usuario@ejemplo.com"
+            size="small"
+          />
+          <TextField
+            label="Contraseña (opcional)"
+            type="password"
+            value={formData.auth_password}
+            onChange={handleChange('auth_password')}
+            placeholder="••••••••"
+            size="small"
+          />
+        </Box>
 
         {formData.adapter_type === 'generic' && (
           <Accordion sx={{ mt: 2 }}>

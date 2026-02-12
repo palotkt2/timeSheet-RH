@@ -49,6 +49,8 @@ export async function PUT(request: NextRequest, context: RouteContext) {
       api_base_path,
       adapter_type,
       auth_token,
+      auth_email,
+      auth_password,
       field_mapping,
       is_active,
       use_https,
@@ -71,7 +73,7 @@ export async function PUT(request: NextRequest, context: RouteContext) {
         name = COALESCE(?, name), ip_address = COALESCE(?, ip_address),
         port = COALESCE(?, port), api_base_path = COALESCE(?, api_base_path),
         adapter_type = COALESCE(?, adapter_type),
-        auth_token = ?, field_mapping = ?,
+        auth_token = ?, auth_email = ?, auth_password = ?, field_mapping = ?,
         use_https = COALESCE(?, use_https),
         is_active = COALESCE(?, is_active), updated_at = datetime('now', 'localtime')
       WHERE id = ?
@@ -83,6 +85,10 @@ export async function PUT(request: NextRequest, context: RouteContext) {
       api_base_path || null,
       adapter_type || null,
       auth_token !== undefined ? auth_token : existing.auth_token,
+      auth_email !== undefined ? auth_email || null : existing.auth_email,
+      auth_password !== undefined
+        ? auth_password || null
+        : existing.auth_password,
       field_mapping !== undefined
         ? typeof field_mapping === 'string'
           ? field_mapping

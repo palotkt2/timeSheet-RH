@@ -83,7 +83,7 @@ export interface WorkSession {
 export function calculateSessions(
   entries: Date[],
   exits: Date[],
-): { sessions: WorkSession[]; totalHours: number } {
+): { sessions: WorkSession[]; totalHours: number; rawTotalHours: number } {
   const sessions: WorkSession[] = [];
   let totalHours = 0;
   let exitIndex = 0;
@@ -113,7 +113,11 @@ export function calculateSessions(
     }
   }
 
-  return { sessions, totalHours: Math.round(totalHours * 100) / 100 };
+  return {
+    sessions,
+    totalHours: Math.round(totalHours * 100) / 100,
+    rawTotalHours: totalHours,
+  };
 }
 
 // ── Night-shift helpers ──

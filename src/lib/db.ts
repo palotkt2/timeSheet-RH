@@ -1,33 +1,56 @@
 import Database from 'better-sqlite3';
-import { createHash, randomBytes } from 'crypto';
+import { randomBytes, pbkdf2Sync } from 'crypto';
 
 /**
  * Base de datos principal (barcode_entries.db).
- * Contiene información de empleados, turnos, asignaciones, checadas y usuarios.
+ * Contiene información de empleados, turnos, asignaciones y checadas locales.
  */
 
-/** Simple password hashing with salt (SHA-256) */
-export function hashPassword(
-  password: string,
-  salt?: string,
-): { hash: string; salt: string } {
-  const s = salt ?? randomBytes(16).toString('hex');
-  const hash = createHash('sha256')
-    .update(s + password)
-    .digest('hex');
-  return { hash, salt: s };
+let db: Database.Database | null = null;
+
+// ─── Password hashing helpers ──────────────────────────────────
+
+const HASH_ITERATIONS = 100_000;
+const HASH_KEYLEN = 64;
+const HASH_DIGEST = 'sha512';
+
+/**
+ * Hash a plain-text password with a random salt.
+ */
+export function hashPassword(password: string): {
+  hash: string;
+  salt: string;
+} {
+  const salt = randomBytes(32).toString('hex');
+  const hash = pbkdf2Sync(
+    password,
+    salt,
+    HASH_ITERATIONS,
+    HASH_KEYLEN,
+    HASH_DIGEST,
+  ).toString('hex');
+  return { hash, salt };
 }
 
+/**
+ * Verify a password against a stored hash + salt.
+ */
 export function verifyPassword(
   password: string,
   storedHash: string,
-  salt: string,
+  storedSalt: string,
 ): boolean {
-  const { hash } = hashPassword(password, salt);
+  const hash = pbkdf2Sync(
+    password,
+    storedSalt,
+    HASH_ITERATIONS,
+    HASH_KEYLEN,
+    HASH_DIGEST,
+  ).toString('hex');
   return hash === storedHash;
 }
 
-let db: Database.Database | null = null;
+// ─── Database initialization ───────────────────────────────────
 
 export function initDB(): Database.Database {
   if (!db) {
@@ -43,7 +66,7 @@ export function initDB(): Database.Database {
         employee_role TEXT,
         department TEXT,
         shift_type TEXT,
-        created_at TIMESTAMP DEFAULT (datetime('now', 'localtime'))
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
 
@@ -56,8 +79,8 @@ export function initDB(): Database.Database {
         tolerance_minutes INTEGER DEFAULT 15,
         days TEXT DEFAULT '[1,2,3,4,5]',
         is_active INTEGER DEFAULT 1,
-        created_at TIMESTAMP DEFAULT (datetime('now', 'localtime')),
-        updated_at TIMESTAMP DEFAULT (datetime('now', 'localtime'))
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
 
@@ -69,19 +92,23 @@ export function initDB(): Database.Database {
         start_date TEXT NOT NULL,
         end_date TEXT,
         active INTEGER DEFAULT 1,
-        created_at TIMESTAMP DEFAULT (datetime('now', 'localtime')),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (shift_id) REFERENCES shifts(id) ON DELETE CASCADE
       )
     `);
 
+    // ── Users table ──────────────────────────────────────────
     db.exec(`
-      CREATE TABLE IF NOT EXISTS barcode_entries (
+      CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        barcode TEXT NOT NULL,
-        timestamp TEXT NOT NULL,
-        action TEXT NOT NULL,
-        created_at TIMESTAMP DEFAULT (datetime('now', 'localtime')),
-        UNIQUE(barcode, timestamp)
+        username TEXT NOT NULL UNIQUE,
+        password_hash TEXT NOT NULL,
+        password_salt TEXT NOT NULL,
+        name TEXT NOT NULL,
+        role TEXT NOT NULL DEFAULT 'viewer',
+        is_active INTEGER DEFAULT 1,
+        created_at TIMESTAMP DEFAULT (datetime('now','localtime')),
+        updated_at TIMESTAMP DEFAULT (datetime('now','localtime'))
       )
     `);
 
@@ -90,9 +117,6 @@ export function initDB(): Database.Database {
       CREATE INDEX IF NOT EXISTS idx_sa_employee ON shift_assignments(employee_id);
       CREATE INDEX IF NOT EXISTS idx_sa_shift ON shift_assignments(shift_id);
       CREATE INDEX IF NOT EXISTS idx_sa_active ON shift_assignments(active);
-      CREATE INDEX IF NOT EXISTS idx_be_barcode ON barcode_entries(barcode);
-      CREATE INDEX IF NOT EXISTS idx_be_timestamp ON barcode_entries(timestamp);
-      CREATE INDEX IF NOT EXISTS idx_be_action ON barcode_entries(action);
     `);
 
     const shiftCount = db
@@ -107,22 +131,7 @@ export function initDB(): Database.Database {
       ).run();
     }
 
-    // ── Users table ───────────────────────────────────
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        username TEXT NOT NULL UNIQUE,
-        password_hash TEXT NOT NULL,
-        password_salt TEXT NOT NULL,
-        name TEXT NOT NULL,
-        role TEXT NOT NULL DEFAULT 'viewer' CHECK(role IN ('admin','supervisor','viewer')),
-        is_active INTEGER NOT NULL DEFAULT 1,
-        created_at TIMESTAMP DEFAULT (datetime('now','localtime')),
-        updated_at TIMESTAMP DEFAULT (datetime('now','localtime'))
-      )
-    `);
-
-    // Seed default admin user (admin / admin)
+    // ── Default admin user (admin / admin) if no users exist ──
     const userCount = db
       .prepare('SELECT COUNT(*) as count FROM users')
       .get() as { count: number };

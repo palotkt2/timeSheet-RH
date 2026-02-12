@@ -22,6 +22,7 @@ import {
   Paper,
   Chip,
   Divider,
+  Autocomplete,
 } from '@mui/material';
 import { UserPlus, Server, Clock, X } from 'lucide-react';
 
@@ -45,6 +46,11 @@ interface RegisterResult {
   registered: boolean;
   shiftAssigned: boolean;
   error?: string;
+}
+
+interface DepartmentOption {
+  code: string;
+  name: string;
 }
 
 interface Props {
@@ -71,6 +77,8 @@ export default function EmployeeRegisterDialog({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [results, setResults] = useState<RegisterResult[] | null>(null);
+  const [departments, setDepartments] = useState<DepartmentOption[]>([]);
+  const [loadingDepts, setLoadingDepts] = useState(false);
 
   // Load plants and shifts
   useEffect(() => {
@@ -106,6 +114,18 @@ export default function EmployeeRegisterDialog({
         fetchShiftDefinitions();
       }
     });
+
+    // Fetch departments from all active plants
+    setLoadingDepts(true);
+    fetch('/api/multi-plant/departments')
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.success && data.departments) {
+          setDepartments(data.departments as DepartmentOption[]);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoadingDepts(false));
   }, [open]);
 
   const fetchShiftDefinitions = async () => {
@@ -193,6 +213,9 @@ export default function EmployeeRegisterDialog({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...form,
+          is_new_department:
+            form.department !== '' &&
+            !departments.some((d) => d.code === form.department),
           plant_ids: Array.from(selectedPlants),
           shift_id: shiftId,
         }),
@@ -334,15 +357,93 @@ export default function EmployeeRegisterDialog({
               <MenuItem value="oficina">Oficina</MenuItem>
             </Select>
           </FormControl>
-          <TextField
-            label="Departamento"
+          <Autocomplete
+            freeSolo
             size="small"
-            fullWidth
-            value={form.department}
-            onChange={(e) =>
-              setForm((f) => ({ ...f, department: e.target.value }))
+            options={departments}
+            getOptionLabel={(opt) => (typeof opt === 'string' ? opt : opt.name)}
+            loading={loadingDepts}
+            value={
+              departments.find((d) => d.code === form.department) ||
+              (form.department ? { code: '', name: form.department } : null)
             }
-            sx={{ flex: 1, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+            onChange={(_e, val) => {
+              if (!val) {
+                setForm((f) => ({ ...f, department: '' }));
+              } else if (typeof val === 'string') {
+                setForm((f) => ({ ...f, department: val }));
+              } else {
+                setForm((f) => ({ ...f, department: val.code || val.name }));
+              }
+            }}
+            onInputChange={(_e, val, reason) => {
+              if (reason === 'input') {
+                // If typed text doesn't match any existing option, store as-is
+                const match = departments.find(
+                  (d) => d.name.toLowerCase() === val.toLowerCase(),
+                );
+                setForm((f) => ({
+                  ...f,
+                  department: match ? match.code : val,
+                }));
+              }
+            }}
+            isOptionEqualToValue={(opt, val) =>
+              typeof opt === 'string' || typeof val === 'string'
+                ? false
+                : opt.code === val.code && opt.name === val.name
+            }
+            filterOptions={(options, { inputValue }) => {
+              const filtered = options.filter((o) =>
+                o.name.toLowerCase().includes(inputValue.toLowerCase()),
+              );
+              // Offer to create a new department if typed text doesn't match
+              if (
+                inputValue !== '' &&
+                !options.some(
+                  (o) => o.name.toLowerCase() === inputValue.toLowerCase(),
+                )
+              ) {
+                filtered.push({
+                  code: '',
+                  name: inputValue,
+                });
+              }
+              return filtered;
+            }}
+            renderOption={(props, option) => {
+              const isNew = option.code === '' && option.name !== '';
+              return (
+                <li {...props} key={option.code || `new-${option.name}`}>
+                  {isNew ? (
+                    <Typography variant="body2">
+                      <strong>+ Crear:</strong> &quot;{option.name}&quot;
+                    </Typography>
+                  ) : (
+                    <Typography variant="body2">{option.name}</Typography>
+                  )}
+                </li>
+              );
+            }}
+            renderInput={(params) => (
+              <TextField
+                {...params}
+                label="Departamento"
+                sx={{
+                  '& .MuiOutlinedInput-root': { borderRadius: 2 },
+                }}
+                InputProps={{
+                  ...params.InputProps,
+                  endAdornment: (
+                    <>
+                      {loadingDepts ? <CircularProgress size={16} /> : null}
+                      {params.InputProps.endAdornment}
+                    </>
+                  ),
+                }}
+              />
+            )}
+            sx={{ flex: 1 }}
           />
         </Box>
 

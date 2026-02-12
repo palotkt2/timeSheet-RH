@@ -36,6 +36,7 @@ export type SidebarView =
   | 'sync'
   | 'live'
   | 'employees'
+  | 'shifts'
   | 'weekly'
   | 'active'
   | 'daily'
@@ -72,6 +73,11 @@ const NAV_SECTIONS: NavSection[] = [
         id: 'employees',
         label: 'Gestión de Empleados',
         icon: <UserCog size={20} />,
+      },
+      {
+        id: 'shifts',
+        label: 'Asignación de Turnos',
+        icon: <Clock size={20} />,
       },
     ],
   },
@@ -113,6 +119,7 @@ const VIEW_TITLES: Record<SidebarView, string> = {
   sync: 'Sincronización',
   live: 'Monitor en Tiempo Real',
   employees: 'Gestión de Empleados',
+  shifts: 'Asignación de Turnos',
   weekly: 'Reporte Semanal',
   active: 'Empleados Activos',
   daily: 'Reporte Diario',
@@ -143,12 +150,10 @@ export default function Sidebar({
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
   const allowedViews = ROLE_PERMISSIONS[userRole] as readonly string[];
-  const filteredSections = NAV_SECTIONS
-    .map((section) => ({
-      ...section,
-      items: section.items.filter((item) => allowedViews.includes(item.id)),
-    }))
-    .filter((section) => section.items.length > 0);
+  const filteredSections = NAV_SECTIONS.map((section) => ({
+    ...section,
+    items: section.items.filter((item) => allowedViews.includes(item.id)),
+  })).filter((section) => section.items.length > 0);
 
   const drawerContent = (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>

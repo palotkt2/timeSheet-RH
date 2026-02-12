@@ -26,7 +26,12 @@ export default function ClientLayout({
   const [mobileOpen, setMobileOpen] = useState(false);
   const router = useRouter();
 
-  const handleLogout = useCallback(() => {
+  const handleLogout = useCallback(async () => {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } catch {
+      // ignore — cookies will be cleared server-side
+    }
     localStorage.removeItem('user');
     router.push('/login');
   }, [router]);

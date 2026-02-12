@@ -24,17 +24,18 @@ interface Session {
 function calculateDailyHours(
   entries: Date[],
   exits: Date[],
-): { totalHours: number; sessions: Session[] } {
-  const { sessions: rawSessions, totalHours } = calculateSessions(
-    entries,
-    exits,
-  );
+): { totalHours: number; rawTotalHours: number; sessions: Session[] } {
+  const {
+    sessions: rawSessions,
+    totalHours,
+    rawTotalHours,
+  } = calculateSessions(entries, exits);
   const sessions: Session[] = rawSessions.map((s) => ({
     entry: formatLocalDateTime(s.entry),
     exit: formatLocalDateTime(s.exit),
     hours: s.hours,
   }));
-  return { totalHours, sessions };
+  return { totalHours, rawTotalHours, sessions };
 }
 
 function getDayStatus(
@@ -64,6 +65,7 @@ function getDayStatus(
 function calculateLateMinutes(
   entryTime: Date,
   shiftStartTime: string,
+  shiftEndTime: string,
   toleranceMinutes = 0,
 ): number {
   if (!entryTime || !shiftStartTime) return 0;
@@ -71,10 +73,30 @@ function calculateLateMinutes(
   const [hours, minutes] = shiftStartTime.split(':').map(Number);
   const shiftStart = new Date(entry);
   shiftStart.setHours(hours, minutes, 0, 0);
+
+  // Night shift: if shift start hour > shift end hour, the shift may start
+  // the previous evening. Adjust shiftStart to the nearest occurrence
+  // relative to the entry time (within ±12 hours).
+  const [eh] = shiftEndTime.split(':').map(Number);
+  if (hours > eh) {
+    // Night shift detected — entry could be in the evening or early morning
+    const diff = entry.getTime() - shiftStart.getTime();
+    if (diff < -12 * 60 * 60 * 1000) {
+      // Entry is next day relative to shiftStart → move shiftStart forward
+      shiftStart.setDate(shiftStart.getDate() + 1);
+    } else if (diff > 12 * 60 * 60 * 1000) {
+      // Entry is previous day relative to shiftStart → move shiftStart backward
+      shiftStart.setDate(shiftStart.getDate() - 1);
+    }
+  }
+
   const diffMinutes = Math.floor(
     (entry.getTime() - shiftStart.getTime()) / (1000 * 60),
   );
+  // Negative means early arrival, not late
   if (diffMinutes <= toleranceMinutes) return 0;
+  // Cap at reasonable maximum (full shift duration) to discard nonsense values
+  if (diffMinutes > 12 * 60) return 0;
   return diffMinutes;
 }
 
@@ -306,6 +328,10 @@ export async function GET(request: NextRequest) {
         end_time: string;
         tolerance_minutes: number;
         days: string;
+        custom_hours?: Record<
+          string,
+          { end_time?: string; start_time?: string }
+        >;
       }
     >();
     // Local assignments first
@@ -321,11 +347,18 @@ export async function GET(request: NextRequest) {
     });
 
     // Multi-plant shift assignments (override local if present — remote plants are authoritative)
+    // Employees can check in at any checador; the shift assignment comes from
+    // the remote system, not from where they scan. When duplicates exist across
+    // plants, we deduplicate by keeping the most specific (non-default) shift.
+    // Manual (admin-assigned) shifts always take highest priority.
     const mpShiftAssignments = mpDb
       .prepare(
-        `SELECT sa.employee_number, sa.shift_id, sa.shift_name, sa.start_time, sa.end_time, sa.days
+        `SELECT sa.employee_number, sa.shift_id, sa.shift_name, sa.start_time, sa.end_time, sa.days,
+                sa.source_plant_id, sa.is_manual, s.tolerance_minutes, s.custom_hours
          FROM shift_assignments sa
-         WHERE sa.active = 1`,
+         LEFT JOIN shifts s ON sa.shift_id = s.remote_shift_id AND sa.source_plant_id = s.source_plant_id
+         WHERE sa.active = 1
+         ORDER BY sa.is_manual DESC, sa.id DESC`,
       )
       .all() as Array<{
       employee_number: string;
@@ -334,17 +367,61 @@ export async function GET(request: NextRequest) {
       start_time: string;
       end_time: string;
       days: string;
+      source_plant_id: number;
+      is_manual: number;
+      tolerance_minutes: number | null;
+      custom_hours: string | null;
     }>;
+
+    // Group assignments by employee, then pick the best one
+    const assignmentsByEmp = new Map<string, typeof mpShiftAssignments>();
     mpShiftAssignments.forEach((a) => {
-      employeeShiftMap.set(a.employee_number, {
+      if (!assignmentsByEmp.has(a.employee_number))
+        assignmentsByEmp.set(a.employee_number, []);
+      assignmentsByEmp.get(a.employee_number)!.push(a);
+    });
+
+    for (const [empNum, assignments] of assignmentsByEmp) {
+      let chosen = assignments[0];
+      if (assignments.length > 1) {
+        // 1) Manual assignment always wins
+        const manual = assignments.find((a) => a.is_manual === 1);
+        if (manual) {
+          chosen = manual;
+        } else {
+          // 2) Prefer the most specific shift (not the generic "Turno Matutino L - V" 06:00)
+          const nonDefault = assignments.find(
+            (a) =>
+              a.start_time !== '06:00' ||
+              a.shift_name.toLowerCase().includes('oficina') ||
+              a.shift_name.toLowerCase().includes('chofer'),
+          );
+          if (nonDefault) chosen = nonDefault;
+        }
+      }
+
+      const a = chosen;
+      let customHours:
+        | Record<string, { end_time?: string; start_time?: string }>
+        | undefined;
+      if (a.custom_hours) {
+        try {
+          const parsed = JSON.parse(a.custom_hours);
+          if (Object.keys(parsed).length > 0) customHours = parsed;
+        } catch {
+          /* ignore */
+        }
+      }
+      employeeShiftMap.set(empNum, {
         id: a.shift_id,
         name: a.shift_name || 'Turno Asignado',
         start_time: a.start_time || '06:00',
         end_time: a.end_time || '15:30',
-        tolerance_minutes: 15,
+        tolerance_minutes: a.tolerance_minutes ?? 15,
         days: a.days || '[1,2,3,4,5]',
+        custom_hours: customHours,
       });
-    });
+    }
 
     // Detect night shift employees for cross-midnight date remapping
     const nightShiftBoundary = buildNightShiftBoundary(employeeShiftMap);
@@ -421,6 +498,34 @@ export async function GET(request: NextRequest) {
       }
     };
 
+    // Day-of-week name mappings for custom_hours lookup
+    const dayOfWeekNames: Record<number, string[]> = {
+      0: ['0', 'sunday', 'domingo', 'dom'],
+      1: ['1', 'monday', 'lunes', 'lun'],
+      2: ['2', 'tuesday', 'martes', 'mar'],
+      3: ['3', 'wednesday', 'miercoles', 'miércoles', 'mié', 'mie'],
+      4: ['4', 'thursday', 'jueves', 'jue'],
+      5: ['5', 'friday', 'viernes', 'vie'],
+      6: ['6', 'saturday', 'sabado', 'sábado', 'sáb', 'sab'],
+    };
+
+    /**
+     * Resolve the effective shift end_time for a specific day,
+     * taking custom_hours overrides into account.
+     */
+    const getEffectiveEndTime = (
+      shift: typeof employeeShiftMap extends Map<string, infer V> ? V : never,
+      dayOfWeek: number,
+    ): string => {
+      if (!shift.custom_hours) return shift.end_time;
+      const aliases = dayOfWeekNames[dayOfWeek] || [];
+      for (const alias of aliases) {
+        const override = shift.custom_hours[alias];
+        if (override?.end_time) return override.end_time;
+      }
+      return shift.end_time;
+    };
+
     // Process employees with records
     interface EmployeeResult {
       employeeNumber: string;
@@ -487,24 +592,37 @@ export async function GET(request: NextRequest) {
         const { entries, exits, plants } = dayRecords;
         if (entries.length > 0) daysPresent++;
 
-        const { totalHours: dayHours, sessions } = calculateDailyHours(
-          entries,
-          exits,
+        // Resolve effective shift end time for this specific day (custom_hours override)
+        const dayObj = allDays.find((d) => d.date === date);
+        const dayOfWeek = dayObj?.dayOfWeek ?? createLocalDate(date).getDay();
+        const effectiveEndTime = getEffectiveEndTime(assignedShift, dayOfWeek);
+        const effectiveDailyHours = calculateShiftHours(
+          assignedShift.start_time,
+          effectiveEndTime,
         );
+
+        const {
+          totalHours: dayHours,
+          rawTotalHours: rawDayHours,
+          sessions,
+        } = calculateDailyHours(entries, exits);
         const status = getDayStatus(
           entries.length,
           exits.length,
           sessions.length > 0,
           dayHours,
-          expectedDailyHours,
+          effectiveDailyHours,
         );
         if (status === 'Completo') daysComplete++;
 
+        // Only calculate late minutes on scheduled workdays
+        const isWorkday = dailyData[date].isWorkday;
         const lateMinutes =
-          entries.length > 0
+          entries.length > 0 && isWorkday
             ? calculateLateMinutes(
                 entries[0],
                 assignedShift.start_time,
+                effectiveEndTime,
                 assignedShift.tolerance_minutes || 0,
               )
             : 0;
@@ -519,11 +637,11 @@ export async function GET(request: NextRequest) {
         const OT_MIN_HOURS = 5 / 60; // 5 minutes
         let dailyOvertimeHours = 0;
         if (!dailyData[date].isWorkday) {
-          // Non-workday: ALL hours are overtime
-          dailyOvertimeHours = dayHours;
+          // Non-workday: ALL hours are overtime (use raw to avoid double-rounding)
+          dailyOvertimeHours = rawDayHours;
         } else if (sessions.length > 0) {
-          // Workday: sum the portion of each session that extends past shift end
-          const [seh, sem] = assignedShift.end_time.split(':').map(Number);
+          // Workday: sum the portion of each session that extends past effective shift end
+          const [seh, sem] = effectiveEndTime.split(':').map(Number);
           const shiftEnd = createLocalDate(date);
           shiftEnd.setHours(seh, sem, 0, 0);
           // Night shift: shift end falls on the next calendar day
@@ -543,9 +661,10 @@ export async function GET(request: NextRequest) {
           // Discard sub-5-minute overtime (scan timing noise)
           if (dailyOvertimeHours < OT_MIN_HOURS) dailyOvertimeHours = 0;
         }
-        // Round per-day FIRST so total = exact sum of displayed per-day values
+        // Round per-day for display; accumulate raw value for accurate total
+        const rawDailyOT = dailyOvertimeHours;
         dailyOvertimeHours = Math.round(dailyOvertimeHours * 100) / 100;
-        totalOvertimeHours += dailyOvertimeHours;
+        totalOvertimeHours += rawDailyOT;
 
         dailyData[date] = {
           date,
@@ -562,11 +681,11 @@ export async function GET(request: NextRequest) {
           exitsCount: exits.length,
           lateMinutes,
           shiftStartTime: assignedShift.start_time,
-          shiftEndTime: assignedShift.end_time,
-          overtimeHours: Math.round(dailyOvertimeHours * 100) / 100,
+          shiftEndTime: effectiveEndTime,
+          overtimeHours: dailyOvertimeHours,
           plantsUsed: [...plants],
         };
-        totalHours += dayHours;
+        totalHours += rawDayHours;
       }
 
       employees.push({

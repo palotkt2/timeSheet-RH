@@ -1,17 +1,27 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { getAuthUser } from '@/lib/auth';
 
 /**
  * GET /api/auth/check
- * Simple authentication check endpoint
- * Returns authentication status based on localStorage (client-side)
+ * Returns the current authenticated user from the access token cookie.
  */
-export async function GET() {
-  // Since this app uses client-side localStorage authentication,
-  // this endpoint just returns a success response
-  // Future enhancement: Implement proper JWT/session validation
+export async function GET(request: NextRequest) {
+  const user = getAuthUser(request);
+
+  if (!user) {
+    return NextResponse.json(
+      { success: false, error: 'No autenticado' },
+      { status: 401 },
+    );
+  }
+
   return NextResponse.json({
     success: true,
-    authenticated: true,
-    message: 'OK',
+    user: {
+      id: user.sub,
+      username: user.username,
+      name: user.name,
+      role: user.role,
+    },
   });
 }

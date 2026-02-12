@@ -1,7 +1,7 @@
 /**
  * Script para inicializar las bases de datos del sistema multi-planta.
  * Crea:
- *   1. barcode_entries.db — Empleados, turnos, asignaciones y checadas locales
+ *   1. barcode_entries.db — Empleados, turnos y asignaciones
  *   2. multi_plant.db     — Plantas remotas y checadas consolidadas
  *
  * Uso: node scripts/init-db.mjs
@@ -9,6 +9,13 @@
 
 import Database from 'better-sqlite3';
 import { existsSync } from 'fs';
+import { randomBytes, pbkdf2Sync } from 'crypto';
+
+function hashPassword(password) {
+  const salt = randomBytes(32).toString('hex');
+  const hash = pbkdf2Sync(password, salt, 100000, 64, 'sha512').toString('hex');
+  return { hash, salt };
+}
 
 console.log('=== Inicializando bases de datos ===\n');
 
@@ -26,7 +33,7 @@ mainDb.exec(`
     employee_role TEXT,
     department TEXT,
     shift_type TEXT,
-    created_at TIMESTAMP DEFAULT (datetime('now','localtime'))
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
   );
 
   CREATE TABLE IF NOT EXISTS shifts (
@@ -37,8 +44,8 @@ mainDb.exec(`
     tolerance_minutes INTEGER DEFAULT 15,
     days TEXT DEFAULT '[1,2,3,4,5]',
     is_active INTEGER DEFAULT 1,
-    created_at TIMESTAMP DEFAULT (datetime('now','localtime')),
-    updated_at TIMESTAMP DEFAULT (datetime('now','localtime'))
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
   );
 
   CREATE TABLE IF NOT EXISTS shift_assignments (
@@ -48,26 +55,14 @@ mainDb.exec(`
     start_date TEXT NOT NULL,
     end_date TEXT,
     active INTEGER DEFAULT 1,
-    created_at TIMESTAMP DEFAULT (datetime('now','localtime')),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (shift_id) REFERENCES shifts(id) ON DELETE CASCADE
-  );
-
-  CREATE TABLE IF NOT EXISTS barcode_entries (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    barcode TEXT NOT NULL,
-    timestamp TEXT NOT NULL,
-    action TEXT NOT NULL,
-    created_at TIMESTAMP DEFAULT (datetime('now','localtime')),
-    UNIQUE(barcode, timestamp)
   );
 
   CREATE INDEX IF NOT EXISTS idx_es_employee ON employee_shifts(employee_number);
   CREATE INDEX IF NOT EXISTS idx_sa_employee ON shift_assignments(employee_id);
   CREATE INDEX IF NOT EXISTS idx_sa_shift ON shift_assignments(shift_id);
   CREATE INDEX IF NOT EXISTS idx_sa_active ON shift_assignments(active);
-  CREATE INDEX IF NOT EXISTS idx_be_barcode ON barcode_entries(barcode);
-  CREATE INDEX IF NOT EXISTS idx_be_timestamp ON barcode_entries(timestamp);
-  CREATE INDEX IF NOT EXISTS idx_be_action ON barcode_entries(action);
 `);
 
 // Turno por defecto
@@ -84,11 +79,36 @@ if (shiftCount.count === 0) {
   console.log('  ✔ Turno Matutino por defecto creado');
 }
 
+// ── Users table ──
+mainDb.exec(`
+  CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    password_salt TEXT NOT NULL,
+    name TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'viewer',
+    is_active INTEGER DEFAULT 1,
+    created_at TIMESTAMP DEFAULT (datetime('now','localtime')),
+    updated_at TIMESTAMP DEFAULT (datetime('now','localtime'))
+  )
+`);
+
+const userCount = mainDb.prepare('SELECT COUNT(*) as count FROM users').get();
+if (userCount.count === 0) {
+  const { hash, salt } = hashPassword('admin');
+  mainDb
+    .prepare(
+      `INSERT INTO users (username, password_hash, password_salt, name, role)
+       VALUES ('admin', ?, ?, 'Administrador', 'admin')`,
+    )
+    .run(hash, salt);
+  console.log('  ✔ Usuario admin por defecto creado (admin / admin)');
+}
+
 mainDb.close();
 console.log(`  ✔ barcode_entries.db ${existed1 ? '(ya existía)' : 'creada'}`);
-console.log(
-  '    Tablas: employee_shifts, shifts, shift_assignments, barcode_entries\n',
-);
+console.log('    Tablas: employee_shifts, shifts, shift_assignments, users\n');
 
 // ─── 2. multi_plant.db ───────────────────────────────────────────────
 const existed2 = existsSync('./multi_plant.db');
@@ -106,11 +126,10 @@ mpDb.exec(`
     adapter_type TEXT DEFAULT 'generic',
     auth_token TEXT,
     field_mapping TEXT,
-    use_https INTEGER DEFAULT 0,
     is_active INTEGER DEFAULT 1,
     last_sync TEXT,
-    created_at TIMESTAMP DEFAULT (datetime('now','localtime')),
-    updated_at TIMESTAMP DEFAULT (datetime('now','localtime'))
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
   );
 
   CREATE TABLE IF NOT EXISTS plant_entries (
@@ -120,65 +139,20 @@ mpDb.exec(`
     timestamp TEXT NOT NULL,
     action TEXT NOT NULL,
     raw_data TEXT,
-    synced_at TIMESTAMP DEFAULT (datetime('now','localtime')),
-    created_at TIMESTAMP DEFAULT (datetime('now','localtime')),
+    synced_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (plant_id) REFERENCES plants(id) ON DELETE CASCADE,
     UNIQUE(plant_id, employee_number, timestamp)
-  );
-
-  CREATE TABLE IF NOT EXISTS employee_names (
-    employee_number TEXT PRIMARY KEY,
-    employee_name TEXT NOT NULL,
-    employee_role TEXT,
-    department TEXT,
-    source_plant_id INTEGER,
-    updated_at TIMESTAMP DEFAULT (datetime('now','localtime'))
-  );
-
-  CREATE TABLE IF NOT EXISTS shifts (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    source_plant_id INTEGER NOT NULL,
-    remote_shift_id INTEGER NOT NULL,
-    name TEXT NOT NULL,
-    start_time TEXT NOT NULL,
-    end_time TEXT NOT NULL,
-    tolerance_minutes INTEGER DEFAULT 0,
-    days TEXT DEFAULT '[1,2,3,4,5]',
-    is_active INTEGER DEFAULT 1,
-    custom_hours TEXT DEFAULT '{}',
-    synced_at TIMESTAMP DEFAULT (datetime('now','localtime')),
-    UNIQUE(source_plant_id, remote_shift_id)
-  );
-
-  CREATE TABLE IF NOT EXISTS shift_assignments (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    employee_number TEXT NOT NULL,
-    shift_id INTEGER NOT NULL,
-    shift_name TEXT,
-    start_time TEXT,
-    end_time TEXT,
-    days TEXT,
-    start_date TEXT,
-    end_date TEXT,
-    active INTEGER DEFAULT 1,
-    source_plant_id INTEGER NOT NULL,
-    synced_at TIMESTAMP DEFAULT (datetime('now','localtime')),
-    UNIQUE(employee_number, source_plant_id)
   );
 
   CREATE INDEX IF NOT EXISTS idx_pe_employee ON plant_entries(employee_number);
   CREATE INDEX IF NOT EXISTS idx_pe_timestamp ON plant_entries(timestamp);
   CREATE INDEX IF NOT EXISTS idx_pe_plant ON plant_entries(plant_id);
   CREATE INDEX IF NOT EXISTS idx_pe_emp_ts ON plant_entries(employee_number, timestamp);
-  CREATE INDEX IF NOT EXISTS idx_pe_date ON plant_entries(date(timestamp));
-  CREATE INDEX IF NOT EXISTS idx_sa_employee ON shift_assignments(employee_number);
-  CREATE INDEX IF NOT EXISTS idx_sa_shift ON shift_assignments(shift_id);
 `);
 
 mpDb.close();
 console.log(`  ✔ multi_plant.db ${existed2 ? '(ya existía)' : 'creada'}`);
-console.log(
-  '    Tablas: plants, plant_entries, employee_names, shifts, shift_assignments\n',
-);
+console.log('    Tablas: plants, plant_entries\n');
 
 console.log('=== Bases de datos listas ===');
